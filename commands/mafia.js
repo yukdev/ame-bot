@@ -16,11 +16,11 @@ module.exports = {
     .setName('mafia')
     .setDescription('Starts a game of Mafia!'),
   async execute(interaction) {
-    const row = new ActionRowBuilder();
+    const joinMessage = new ActionRowBuilder();
 
     // FIXME: this isn't working - everyone can see and use every button
     // Add a "Join Mafia Game" button for everyone
-    row.addComponents(
+    joinMessage.addComponents(
       new ButtonBuilder()
         .setCustomId('join')
         .setLabel('Join')
@@ -28,21 +28,20 @@ module.exports = {
     );
 
     // Add a "Start Game" button that is only visible to the creator
-    if (interaction.user.id === interaction.member.user.id) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId('start')
-          .setLabel('Start')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId('cancel')
-          .setLabel('Cancel')
-          .setStyle(ButtonStyle.Danger),
-      );
-    } else {
-      // If the user is not the creator, disable the row
-      row.setDisabled(true);
-    }
+    const startCancelMessage = new ActionRowBuilder();
+    startCancelMessage.addComponents(
+      new ButtonBuilder()
+        .setCustomId('start')
+        .setLabel('Start')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('cancel')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    // TODO: move start/end to ephemeral msg to creator
+    // TODO: add ephemeral msg to people who join with option to leave
 
     // Initialize players array, add creator to it
     players.push({
@@ -56,9 +55,16 @@ module.exports = {
       .setTitle(`${interaction.user.username} has started a game of Mafia!`)
       .setDescription(`Players: ${players.map((p) => p.interaction.user)}`);
 
+    // Join to everyone else
     const message = await interaction.reply({
       embeds: [embed],
-      components: [row],
+      components: [joinMessage],
+    });
+
+    // Start/end to creator
+    await interaction.followUp({
+      components: [startCancelMessage],
+      ephemeral: true,
     });
 
     const filter = (i) =>

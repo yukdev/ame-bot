@@ -10,6 +10,9 @@ const { shuffle, getNumberOfMafia } = require('../utils/helperFunctions');
 
 let game;
 
+let dayDuration;
+let remainingTime = 0;
+
 const mafia = [];
 const townies = [];
 let cop;
@@ -157,10 +160,10 @@ async function setupGame() {
 
   setTimeout(() => {
     startDay();
-  }, 5000);
+  }, 1000);
 }
 
-function startDay(killed = [cop, medic]) {
+function startDay(killed) {
   // set cycle to day
   game.cycle = 'day';
   // increment day
@@ -234,9 +237,9 @@ function startDay(killed = [cop, medic]) {
 
   game.inNomination = true;
 
-  setTimeout(() => {
-    promptDefense();
-  }, 10000);
+  dayDuration = setTimeout(() => {
+    startNight();
+  }, 300000);
 }
 
 async function promptDefense() {
@@ -463,9 +466,27 @@ async function createPrivateThread(name, interactions, topic) {
   return thread;
 }
 
+// consider while loop to keep track of time
+
+function pauseDayDuration() {
+  remainingTime =
+    dayDuration._idleTimeout - (Date.now() - dayDuration._idleStart);
+  clearTimeout(dayDuration);
+}
+
+function resumeDayDuration() {
+  dayDuration = setTimeout(() => {
+    startNight();
+  }, remainingTime);
+  remainingTime = 0;
+}
+
 module.exports = {
   startGame,
   setupGame,
   startDay,
   startNight,
+  promptDefense,
+  pauseDayDuration,
+  resumeDayDuration,
 };

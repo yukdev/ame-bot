@@ -14,6 +14,7 @@ class Game {
     this.inLynching = false;
     this.day = 0;
     this.cycle = 'day';
+    // this.time = 0;
   }
 
   checkForWin() {

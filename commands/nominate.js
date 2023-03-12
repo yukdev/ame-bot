@@ -13,7 +13,7 @@ module.exports = {
     .setDescription('Nominate a player to be lynched.')
     .addUserOption((option) =>
       option
-        .setName('target')
+        .setName('selected')
         .setDescription('The player to nominate')
         .setRequired(true),
     ),
@@ -30,11 +30,11 @@ module.exports = {
       return;
     }
 
-    const nominator = game.players.find((p) => p.id === interaction.user.id);
-    const nominatorDiscord = interaction.user;
-    const selected = interaction.options.getUser('target');
+    const player = game.players.find((p) => p.id === interaction.user.id);
+    const playerDiscord = interaction.user;
+    const selected = interaction.options.getUser('selected');
 
-    // cannot nominate if game is not in nomination phase
+    // game not in nomination phase
     if (!game.inNomination) {
       await interaction.reply({
         content: 'You cannot nominate a player at this time.',
@@ -43,7 +43,7 @@ module.exports = {
       return;
     }
 
-    // cannot select player not in game
+    // player selected not in the game
     if (!game.players.some((p) => p.id === selected.id)) {
       await interaction.reply({
         content: 'That player is not in this game.',
@@ -52,89 +52,90 @@ module.exports = {
       return;
     }
 
-    // cannot select yourself
+    // no player selected
+    if (!selected) {
+      await interaction.reply('Please select a player to nominate.');
+      return;
+    }
+
+    // selecting yourself
     if (selected.id === interaction.user.id) {
       await interaction.reply({
-        content: "You can't nominate yourself.",
+        content: 'You cannot nominate yourself.',
         ephemeral: true,
       });
       return;
     }
 
     const selectedPlayer = game.players.find((p) => p.id === selected.id);
-    const selectedPlayerDiscord = interaction.client.users.cache.get(
-      selectedPlayer.id,
-    );
-    game.vote(nominator, selectedPlayer);
+    game.vote(player, selectedPlayer);
 
     const embed = new EmbedBuilder()
       .setColor('#0099ff')
       .setTitle('Please decide if you would like to nominate this player')
       .setDescription(
-        `${nominatorDiscord} has nominated ${selectedPlayerDiscord} to be lynched.`,
+        `${playerDiscord} has nominated ${selected} to be lynched.`,
       );
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`nomination-${selected.id}`)
         .setLabel('Nominate')
-        .setStyle('Primary')
-        .setEmoji('👍'),
+        .setStyle('Primary'),
     );
 
+    // ack interaction
+    await interaction.reply({
+      content: `You have successfully nominated ${selected}`,
+      ephemeral: true,
+    });
+
+    // send embed w/ button
     const message = await interaction.channel.send({
       embeds: [embed],
       components: [row],
     });
 
-    // Set a timeout for the button to expire after 30 seconds
-    setTimeout(async () => {
-      row.components[0].setDisabled(true);
-      row.components[0].setEmoji('🕒');
-      await message.edit({ components: [row] });
-    }, 30000);
-
     // Check if the button click is from the person who nominated or not
     const filter = (i) => {
-      return (
-        i.customId === `nomination-${selected.id}` &&
-        i.user.id !== nominatorDiscord.id
-      );
+      return i.customId === `nomination-${selected.id}`;
     };
 
     // Handle button click
     const collector = interaction.channel.createMessageComponentCollector({
       filter,
       time: 30000,
-      max: 1,
     });
 
     collector.on('collect', async (i) => {
-      // send message to channel saying who agreed
-      await interaction.channel.send(
-        `${i.user} has agreed to nominate ${selectedPlayerDiscord}\nNow proceeding to ${selectedPlayerDiscord}'s defense`,
-      );
-      // Delete the bot's message and stop the collector
-      const reply = await interaction.fetchReply();
-      await reply.delete();
-      collector.stop();
-      promptDefense();
+      if (i.user.id === selected.id) {
+        await i.reply({
+          content: 'You cannot agree to nominate for yourself!',
+          ephemeral: true,
+        });
+      } else if (i.user.id === interaction.user.id) {
+        await i.reply({
+          content: 'You cannot vote for your own nomination!',
+          ephemeral: true,
+        });
+      } else {
+        // send message to channel saying who agreed
+        await interaction.channel.send(
+          `${i.user} has agreed to nominate ${selected}\nNow proceeding to ${selected}'s defense`,
+        );
+        await message.delete();
+        collector.stop();
+        promptDefense();
+      }
     });
 
     collector.on('end', async (collected) => {
       // If no one agreed to nominate, send message to channel
       if (collected.size === 0) {
-        await interaction.channel.send(
-          `No one agreed to nominate ${selectedPlayerDiscord}`,
-        );
-        // Delete the bot's message and stop the collector
-        const reply = await interaction.fetchReply();
-        await reply.delete();
+        await interaction.channel.send(`No one agreed to nominate ${selected}`);
+        await message.delete();
         collector.stop();
       }
     });
-
-    // acknowledge nomination silently
-    await interaction.deferUpdate();
   },
 };
