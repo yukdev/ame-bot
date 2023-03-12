@@ -8,7 +8,10 @@ class Game {
     this.interaction = interaction;
     this.players = [];
     this.votes = {};
+    this.voted;
     this.inProgress = false;
+    this.inNomination = false;
+    this.inLynching = false;
     this.day = 0;
     this.cycle = 'day';
   }
@@ -41,38 +44,50 @@ class Game {
     this.players.push(player);
   }
 
-  nominate(voter, target) {
+  vote(voter, target) {
     // add vote to votes object
-    this.votes[target] = this.votes[target] + 1 || 1;
+    this.votes[target.name] = this.votes[target.name] + 1 || 1;
     // set voter's voted property to true
     voter.voted = true;
+    console.log(
+      '🚀 ~ file: game.js:50 ~ Game ~ vote ~ this.votes:',
+      this.votes,
+    );
   }
 
-  promptStatement() {
+  voteAgainst(voter, target) {
+    // add vote to votes object
+    this.votes[target.name] = this.votes[target.name] - 1 || -1;
+    // set voter's voted property to true
+    voter.voted = true;
+    console.log(
+      '🚀 ~ file: game.js:50 ~ Game ~ vote ~ this.votes:',
+      this.votes,
+    );
+  }
+
+  async promptDefense() {
     // get player with majority vote
     const playerWithMajority = Object.keys(this.votes).reduce((a, b) =>
       this.votes[a] > this.votes[b] ? a : b,
     );
-    // get player object from player name
-    const player = this.players.find((p) => p.name === playerWithMajority);
+    this.voted = playerWithMajority;
     // clear votes object and set all players' voted property to false
     this.votes = {};
     this.players.forEach((p) => (p.voted = false));
+    // get voted player's id
+    const votedPlayerId = this.players.find((p) => p.name === this.voted).id;
+    // get voted player's user object
+    const votedPlayerUser = await this.interaction.client.users.fetch(
+      votedPlayerId,
+    );
     // prompt player to make statement
-    // make this ping later
-    this.message.channel.send(
-      `${player.name} had the majority of votes. Please plea your case.`,
+    await this.interaction.channel.send(
+      `${votedPlayerUser} had the majority of votes. You have 2 minutes to plea your case.`,
     );
   }
 
-  lynchVote(voter, target) {
-    // add vote to votes object
-    this.votes[target] = this.votes[target] + 1 || 1;
-    // set voter's voted property to true
-    voter.voted = true;
-  }
-
-  determineLynch() {
+  async determineLynch() {
     // check if there is a majority vote
     const majorityExists = Object.values(this.votes).some(
       (vote) => vote > this.players.length / 2,
@@ -87,18 +102,22 @@ class Game {
       const player = this.players.find((p) => p.name === playerWithMajority);
       // kill player
       player.kill();
+      // get player's user object
+      const playerUser = await this.interaction.client.users.fetch(player.id);
+      await this.interaction.channel.send(`${playerUser} has been lynched.`);
       // check if game is over
       this.checkForWin();
     } else {
       // send message to channel saying there was no majority vote
-      this.message.channel.send('There was no majority vote.');
+      await this.interaction.channel.send('There was no majority vote.');
     }
-    // clear votes object and set all players' voted property to false
+    // reset votes and voted properties
     this.votes = {};
+    this.voted = null;
     this.players.forEach((p) => (p.voted = false));
-
     // transition to night
-    startNight();
+    // startNight();
+    return;
   }
 }
 

@@ -34,11 +34,6 @@ class Townie extends Player {
     this.description =
       '\nYou are a townie.\nYou win when all mafia are dead.\nPlease work together with your fellow townies to find and kill all mafia.';
   }
-
-  // actions
-  // vote(player) {
-  //   player.alive = false;
-  // }
 }
 
 class Cop extends Townie {

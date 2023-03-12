@@ -36,7 +36,7 @@ module.exports = {
       i.customId === 'join' && i.user.id !== interaction.user.id;
     const collector = message.createMessageComponentCollector({
       filter,
-      time: 12000,
+      time: 5000,
     });
 
     // Create an array of player objects for the game
@@ -45,21 +45,21 @@ module.exports = {
       { name: interaction.user.username, id: interaction.user.id, interaction },
     ];
     // add the players who clicked the button to the array
-    collector.on('collect', (i) => {
+    collector.on('collect', async (i) => {
       // grab user of person who clicks
       const playerName = i.user.username;
       if (players.some((p) => p.id === i.user.id)) {
-        i.reply({
+        await i.reply({
           content: 'You have already joined the game!',
           ephemeral: true,
         });
       } else {
         players.push({ name: i.user.username, id: i.user.id, interaction: i });
-        i.reply({
+        await i.reply({
           content: 'You have joined the game!',
           ephemeral: true,
         });
-        interaction.channel.send({
+        await interaction.channel.send({
           content: `${playerName} has joined the game!`,
         });
       }

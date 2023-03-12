@@ -1,5 +1,4 @@
-const MINIMUM_PLAYERS = 4;
-
+const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require('discord.js');
 const { Game } = require('../models/game');
 const { Player, Mafia, Townie, Cop, Medic } = require('../models/player');
 const { shuffle, getNumberOfMafia } = require('../utils/helperFunctions');
@@ -22,6 +21,9 @@ async function startGame(interaction, players) {
 
   // set game to start
   game.inProgress = true;
+
+  // add game to client
+  interaction.client.game = game;
 
   // send message to channel
   await interaction.channel.send(
@@ -86,9 +88,9 @@ function startDay(killed) {
   // increment day
   game.day += 1;
   // check if game is over
-  // if (game.checkForWin()) {
-  //   endGame(game.checkForWin());
-  // }
+  if (game.checkForWin()) {
+    endGame(game.checkForWin());
+  }
 
   // reset medic, cop, and protected player
   const medic = game.players.find((player) => player.role === 'medic');
@@ -133,7 +135,93 @@ function startDay(killed) {
     'Please discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
   );
 
-  return;
+  game.inNomination = true;
+
+  setTimeout(() => {
+    promptDefense();
+  }, 10000);
+}
+
+function promptDefense() {
+  game.inNomination = false;
+  game.promptDefense();
+
+  setTimeout(() => {
+    startLynchVote();
+  }, 10000);
+  // }, 120000)
+}
+
+async function startLynchVote() {
+  game.inLynching = true;
+
+  // get voted player's id
+  const votedPlayerId = game.players.find((p) => p.name === game.voted).id;
+  const votedPlayerUser = await game.interaction.client.users.fetch(
+    votedPlayerId,
+  );
+  await game.interaction.channel.send(
+    `Please vote if you would like to lynch ${votedPlayerUser}`,
+  );
+  const yesButton = new ButtonBuilder()
+    .setCustomId('yes')
+    .setLabel('Yes')
+    .setStyle('Success');
+  const noButton = new ButtonBuilder()
+    .setCustomId('no')
+    .setLabel('No')
+    .setStyle('Danger');
+
+  const row = new ActionRowBuilder().addComponents([yesButton, noButton]);
+
+  const embed = new EmbedBuilder()
+    .setTitle(
+      'You have 5 seconds to vote.\nIf you do not vote, you will be considered abstaining.',
+    )
+    .setDescription(
+      `Please vote if you would like to lynch ${votedPlayerUser}`,
+    );
+
+  const message = await game.interaction.channel.send({
+    embeds: [embed],
+    components: [row],
+  });
+
+  const filter = (i) =>
+    (i.customId === 'yes' || i.customId === 'no') &&
+    i.user.id !== votedPlayerId;
+
+  const collector = message.createMessageComponentCollector({
+    filter,
+    time: 10000,
+    // time: 120000,
+  });
+
+  collector.on('collect', async (i) => {
+    // get player who voted
+    const player = game.players.find((p) => p.id === i.user.id);
+    // get lynch target
+    const target = game.players.find((p) => p.name === game.voted);
+    // if player has already voted, return
+    if (player.hasVoted) return;
+    if (i.customId === 'yes') {
+      game.vote(player, target);
+      await i.reply({
+        content: `You have voted to lynch ${votedPlayerUser}`,
+        ephemeral: true,
+      });
+    } else if (i.customId === 'no') {
+      game.voteAgainst(player, target);
+      await i.reply({
+        content: `You have voted against lynching ${votedPlayerUser}`,
+        ephemeral: true,
+      });
+    }
+  });
+
+  collector.on('end', async () => {
+    game.determineLynch();
+  });
 }
 
 function startNight() {
