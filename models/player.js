@@ -5,6 +5,7 @@ class Player {
     this.role = role;
     this.id = id;
     this.alive = true;
+    this.nominated = false;
     this.voted = false;
     this.protected = false;
     this.description;

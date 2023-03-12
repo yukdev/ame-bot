@@ -5,12 +5,12 @@ const {
   EmbedBuilder,
 } = require('discord.js');
 
-const { promptDefense } = require('../utils/gameLogic');
+const { promptDefense, startNight } = require('../utils/gameLogic');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('nominate')
-    .setDescription('Nominate a player to be lynched.')
+    .setDescription('Nominate a player to be hanged.')
     .addUserOption((option) =>
       option
         .setName('selected')
@@ -20,6 +20,8 @@ module.exports = {
 
   async execute(interaction) {
     const game = interaction.client.game;
+    // pause game timer
+    game.pauseTimer();
 
     // no game in progress
     if (!game?.inProgress) {
@@ -67,6 +69,15 @@ module.exports = {
       return;
     }
 
+    // already nominated
+    if (player.nominated) {
+      await interaction.reply({
+        content: 'You have already nominated a player.',
+        ephemeral: true,
+      });
+      return;
+    }
+
     const selectedPlayer = game.players.find((p) => p.id === selected.id);
     game.vote(player, selectedPlayer);
 
@@ -74,7 +85,7 @@ module.exports = {
       .setColor('#0099ff')
       .setTitle('Please decide if you would like to nominate this player')
       .setDescription(
-        `${playerDiscord} has nominated ${selected} to be lynched.`,
+        `${playerDiscord} has nominated ${selected} to be hanged.`,
       );
 
     const row = new ActionRowBuilder().addComponents(
@@ -84,7 +95,8 @@ module.exports = {
         .setStyle('Primary'),
     );
 
-    // ack interaction
+    // process nomination and ack interaction
+    player.nominated = true;
     await interaction.reply({
       content: `You have successfully nominated ${selected}`,
       ephemeral: true,
@@ -135,6 +147,7 @@ module.exports = {
         await interaction.channel.send(`No one agreed to nominate ${selected}`);
         await message.delete();
         collector.stop();
+        game.resumeTimer(startNight);
       }
     });
   },

@@ -1,5 +1,3 @@
-const { startNight } = require('../utils/gameLogic');
-
 /**
  * Mafia Game Class
  */
@@ -8,13 +6,14 @@ class Game {
     this.interaction = interaction;
     this.players = [];
     this.votes = {};
-    this.voted;
+    this.accused;
     this.inProgress = false;
     this.inNomination = false;
-    this.inLynching = false;
+    this.inHanging = false;
     this.day = 0;
     this.cycle = 'day';
-    // this.time = 0;
+    this.dayTime = 0;
+    this.timerIntervalId = null;
   }
 
   checkForWin() {
@@ -49,17 +48,11 @@ class Game {
     // add vote to votes object
     this.votes[target.name] = this.votes[target.name] + 1 || 1;
     // set voter's voted property to true
-    voter.voted = target;
+    voter.voted = true;
+    this.accused = target;
   }
 
-  voteAgainst(voter, target) {
-    // add vote to votes object
-    this.votes[target.name] = this.votes[target.name] - 1 || -1;
-    // set voter's voted property to true
-    voter.voted = target;
-  }
-
-  async determineLynch() {
+  determineHanging() {
     // check if there is a majority vote
     const majorityExists = Object.values(this.votes).some(
       (vote) => vote > this.players.length / 2,
@@ -67,6 +60,41 @@ class Game {
 
     return majorityExists;
   }
+
+  clearVotes() {
+    this.votes = {};
+    this.accused = undefined;
+  }
+
+  startTimer(duration, callback) {
+    this.dayTime = duration;
+    this.timerIntervalId = setInterval(() => {
+      this.dayTime -= 1;
+      console.log('startTimer: ', this.dayTime);
+      if (this.dayTime <= 0) {
+        clearInterval(this.timerIntervalId);
+        callback();
+      }
+    }, 1000);
+  }
+
+  pauseTimer() {
+    console.log('pauseTimer: ', this.dayTime);
+    clearInterval(this.timerIntervalId);
+  }
+
+  resumeTimer(callback) {
+    this.timerIntervalId = setInterval(() => {
+      this.dayTime -= 1;
+      console.log('resumeTimer: ', this.dayTime);
+      if (this.dayTime <= 0) {
+        clearInterval(this.timerIntervalId);
+        callback();
+      }
+    }, 1000);
+  }
+
+  resetTimer() {}
 }
 
 module.exports = {

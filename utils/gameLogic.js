@@ -10,9 +10,6 @@ const { shuffle, getNumberOfMafia } = require('../utils/helperFunctions');
 
 let game;
 
-let dayDuration;
-let remainingTime = 0;
-
 const mafia = [];
 const townies = [];
 let cop;
@@ -160,7 +157,7 @@ async function setupGame() {
 
   setTimeout(() => {
     startDay();
-  }, 1000);
+  }, 1000 * 5);
 }
 
 function startDay(killed) {
@@ -175,7 +172,7 @@ function startDay(killed) {
 
   // reset votes and voted properties
   game.votes = {};
-  game.voted = null;
+  game.accused = null;
   game.players.forEach((p) => (p.voted = false));
 
   // reset medic, cop, and protected player
@@ -237,9 +234,8 @@ function startDay(killed) {
 
   game.inNomination = true;
 
-  dayDuration = setTimeout(() => {
-    startNight();
-  }, 300000);
+  // start a timer for 5 minutes
+  game.startTimer(10, startNight);
 }
 
 async function promptDefense() {
@@ -248,21 +244,30 @@ async function promptDefense() {
   game.interaction.channel.send('You have 2 minutes to make your defense.');
 
   setTimeout(() => {
-    startLynchVote();
-  }, 10000);
-  // }, 120000)
+    startHangingVote();
+  }, 1000 * 5);
+
+  // setTimeout(() => {
+  //   startHangingVote();
+  // }, 1000 * 60 * 2);
 }
 
-async function startLynchVote() {
-  game.inLynching = true;
+async function startHangingVote() {
+  // set game to hanging phase
+  game.inHanging = true;
 
   // get voted player
-  const votedPlayerId = game.players.find((p) => p.name === game.voted).id;
+  const votedPlayer = game.players.find((p) => p === game.accused);
   const votedPlayerUser = await game.interaction.client.users.fetch(
-    votedPlayerId,
+    votedPlayer.id,
   );
+
+  // clear votes
+  game.clearVotes();
+  game.players.forEach((p) => (p.voted = false));
+
   await game.interaction.channel.send(
-    `Please vote if you would like to lynch ${votedPlayerUser}`,
+    `Please vote if you would like to hang ${votedPlayerUser}`,
   );
 
   const yesButton = new ButtonBuilder()
@@ -278,152 +283,157 @@ async function startLynchVote() {
 
   const embed = new EmbedBuilder()
     .setTitle(
-      'You have 5 seconds to vote.\nIf you do not vote, you will be considered abstaining.',
+      'You have 15 seconds to vote.\nIf you do not vote, you will be considered abstaining.',
     )
-    .setDescription(
-      `Please vote if you would like to lynch ${votedPlayerUser}`,
-    );
+    .setDescription(`Please vote if you would like to hang ${votedPlayerUser}`);
 
   const message = await game.interaction.channel.send({
     embeds: [embed],
     components: [row],
   });
 
-  const filter = (i) =>
-    (i.customId === 'yes' || i.customId === 'no') &&
-    i.user.id !== votedPlayerId;
+  const filter = (i) => i.customId === 'yes' || i.customId === 'no';
 
+  // 15 seconds to vote
   const collector = message.createMessageComponentCollector({
     filter,
-    time: 10000,
+    time: 15 * 1000,
     // time: 120000,
   });
 
   collector.on('collect', async (i) => {
     // get player who voted
     const player = game.players.find((p) => p.id === i.user.id);
-    // get lynch target
-    const target = game.voted;
     // if player has already voted, return
     if (player.hasVoted) return;
-    if (i.customId === 'yes') {
-      game.vote(player, target);
+    if (i.customId === 'yes' && i.user.id === votedPlayer.id) {
       await i.reply({
-        content: `You have voted to lynch ${votedPlayerUser}`,
+        content: 'You cannot vote to hang yourself.',
+        ephemeral: true,
+      });
+    } else if (i.customId === 'yes') {
+      game.vote(player, votedPlayer);
+      await i.reply({
+        content: `You have voted to hang ${votedPlayerUser}`,
         ephemeral: true,
       });
     } else if (i.customId === 'no') {
-      game.voteAgainst(player, target);
       await i.reply({
-        content: `You have voted against lynching ${votedPlayerUser}`,
+        content: `You have voted against hanging ${votedPlayerUser}`,
         ephemeral: true,
       });
     }
   });
 
   collector.on('end', async () => {
+    // determine if player should be hanged
+    const hangAccused = game.determineHanging();
+    // clear votes
+    game.clearVotes();
+    game.players.forEach((p) => (p.voted = false));
     // if there is a majority vote
-    if (game.determineLynch()) {
-      // get player object from player name
-      const votedPlayer = game.players.find(
-        (p) => p.name === Object.keys(game.votes)[0],
-      );
+    if (hangAccused) {
       // kill player
       votedPlayer.kill();
       // get player's user object
       const playerUser = await game.interaction.client.users.fetch(
         votedPlayer.id,
       );
-      await game.interaction.channel.send(`${playerUser} has been lynched.`);
+      await game.interaction.channel.send(`${playerUser} has been hanged.`);
+      // FIXME:
       // check if game is over
-      if (game.checkForWin()) {
-        endGame(game.checkForWin());
-      }
+      // if (game.checkForWin()) {
+      //   endGame(game.checkForWin());
+      // }
+      await game.interaction.channel.send('Now proceeding to night time.');
+      // clear the interval since we are proceeding to night
+      game.resetTimer();
       startNight();
     } else {
       // send message to channel saying there was no majority vote
-      await game.interaction.channel.send('There was no majority vote.');
+      await game.interaction.channel.send(
+        'There was no majority vote.\nPlease continue to discuss and nominate players.',
+      );
+      game.inNomination = true;
+      game.resumeTimer(startNight);
     }
-    // reset votes and voted properties
-    game.votes = {};
-    game.voted = null;
-    game.players.forEach((p) => (p.voted = false));
-    return;
   });
 }
 
 async function startNight() {
-  // set cycle to night
-  game.cycle = 'night';
+  console.log('state of the game', game);
+  return;
+  // // set cycle to night
+  // game.cycle = 'night';
 
-  // unlock mafia thread to let them discuss
-  await mafiaThread.setLocked(false);
-  await copThread.setLocked(false);
-  await medicThread.setLocked(false);
+  // // unlock mafia thread to let them discuss
+  // await mafiaThread.setLocked(false);
+  // await copThread.setLocked(false);
+  // await medicThread.setLocked(false);
 
-  let [mafiaDone, copDone, medicDone] = [false, false, false];
-  const killed = [];
+  // let [mafiaDone, copDone, medicDone] = [false, false, false];
+  // const killed = [];
 
-  // grab mafia members
-  const mafia = game.players.filter((p) => p.role === 'mafia');
-  // create a private thread for the mafia members
-  // send message to that thread
-  // FIXME, use discord bot option selection
-  game.message.channel.send(`
-  Mafia, it is now night.
-  Please discuss amongst yourself who to kill.
-  When you have decided on a target, please choose them from the options.`);
-  // FIXME: set chosen player to variable
-  const chosenPlayer = new Player();
-  // Send confirmation message after mafia has chosen a player
-  game.message.channel.send(`
-  Your target has been confirmed.
-  Please wait for the other roles to make their decisions.`);
-  // somehow check if they made their decision
-  // mafiaDone = true;
+  // // grab mafia members
+  // const mafia = game.players.filter((p) => p.role === 'mafia');
+  // // create a private thread for the mafia members
+  // // send message to that thread
+  // // FIXME, use discord bot option selection
+  // game.message.channel.send(`
+  // Mafia, it is now night.
+  // Please discuss amongst yourself who to kill.
+  // When you have decided on a target, please choose them from the options.`);
+  // // FIXME: set chosen player to variable
+  // const chosenPlayer = new Player();
+  // // Send confirmation message after mafia has chosen a player
+  // game.message.channel.send(`
+  // Your target has been confirmed.
+  // Please wait for the other roles to make their decisions.`);
+  // // somehow check if they made their decision
+  // // mafiaDone = true;
 
-  // check to see if cop is alive
-  if (game.players.some((p) => p.role === 'cop')) {
-    // create a private thread for the cop
-    // send message to that thread
-    game.message.channel.send(`
-    Cop, it is now night.
-    Please choose a player to investigate.`);
-    // after cop has chosen a player, send message to channel
-    const cop = game.players.find((p) => p.role === 'cop');
-    game.message.channel.send(`${cop.checkedPlayer} is ${cop.investgate()}.`);
-    // somehow check if they made their decision
-    // copDone = true;
-  }
+  // // check to see if cop is alive
+  // if (game.players.some((p) => p.role === 'cop')) {
+  //   // create a private thread for the cop
+  //   // send message to that thread
+  //   game.message.channel.send(`
+  //   Cop, it is now night.
+  //   Please choose a player to investigate.`);
+  //   // after cop has chosen a player, send message to channel
+  //   const cop = game.players.find((p) => p.role === 'cop');
+  //   game.message.channel.send(`${cop.checkedPlayer} is ${cop.investgate()}.`);
+  //   // somehow check if they made their decision
+  //   // copDone = true;
+  // }
 
-  // check to see if medic is alive
-  if (game.players.some((p) => p.role === 'medic')) {
-    // create a private thread for the medic
-    // send message to that thread
-    game.message.channel.send(`
-    Medic, it is now night.
-    Please choose a player to save.`);
-    // after medic has chosen a player, send message to channel
-    const medic = game.players.find((p) => p.role === 'medic');
-    game.message.channel.send(
-      `${medic.savedPlayer} is safe from being killed tonight.`,
-    );
-    // somehow check if they made their decision
-    // medicDone = true;
-  }
-  // consideration for if medic and/or cop are dead.
-  // set a timer for a variable amount of time so people can't metagame.
+  // // check to see if medic is alive
+  // if (game.players.some((p) => p.role === 'medic')) {
+  //   // create a private thread for the medic
+  //   // send message to that thread
+  //   game.message.channel.send(`
+  //   Medic, it is now night.
+  //   Please choose a player to save.`);
+  //   // after medic has chosen a player, send message to channel
+  //   const medic = game.players.find((p) => p.role === 'medic');
+  //   game.message.channel.send(
+  //     `${medic.savedPlayer} is safe from being killed tonight.`,
+  //   );
+  //   // somehow check if they made their decision
+  //   // medicDone = true;
+  // }
+  // // consideration for if medic and/or cop are dead.
+  // // set a timer for a variable amount of time so people can't metagame.
 
-  if (mafiaDone && copDone && medicDone) {
-    // determine if the person mafia shot is dead
-    const medic = game.players.find((p) => p.role === 'medic');
-    if (medic.savedPlayer !== chosenPlayer) {
-      killed.push(chosenPlayer);
-      chosenPlayer.kill();
-    }
-    // start day
-    startDay(killed);
-  }
+  // if (mafiaDone && copDone && medicDone) {
+  //   // determine if the person mafia shot is dead
+  //   const medic = game.players.find((p) => p.role === 'medic');
+  //   if (medic.savedPlayer !== chosenPlayer) {
+  //     killed.push(chosenPlayer);
+  //     chosenPlayer.kill();
+  //   }
+  //   // start day
+  //   startDay(killed);
+  // }
 }
 
 function endGame(winner) {
@@ -468,25 +478,10 @@ async function createPrivateThread(name, interactions, topic) {
 
 // consider while loop to keep track of time
 
-function pauseDayDuration() {
-  remainingTime =
-    dayDuration._idleTimeout - (Date.now() - dayDuration._idleStart);
-  clearTimeout(dayDuration);
-}
-
-function resumeDayDuration() {
-  dayDuration = setTimeout(() => {
-    startNight();
-  }, remainingTime);
-  remainingTime = 0;
-}
-
 module.exports = {
   startGame,
   setupGame,
   startDay,
   startNight,
   promptDefense,
-  pauseDayDuration,
-  resumeDayDuration,
 };

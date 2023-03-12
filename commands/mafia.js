@@ -16,20 +16,18 @@ module.exports = {
     .setName('mafia')
     .setDescription('Starts a game of Mafia!'),
   async execute(interaction) {
-    const joinMessage = new ActionRowBuilder();
-
-    // FIXME: this isn't working - everyone can see and use every button
-    // Add a "Join Mafia Game" button for everyone
-    joinMessage.addComponents(
+    const joinLeaveMessage = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('join')
         .setLabel('Join')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('leave')
+        .setLabel('Leave')
+        .setStyle(ButtonStyle.Danger),
     );
 
-    // Add a "Start Game" button that is only visible to the creator
-    const startCancelMessage = new ActionRowBuilder();
-    startCancelMessage.addComponents(
+    const startCancelMessage = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('start')
         .setLabel('Start')
@@ -39,9 +37,6 @@ module.exports = {
         .setLabel('Cancel')
         .setStyle(ButtonStyle.Danger),
     );
-
-    // TODO: move start/end to ephemeral msg to creator
-    // TODO: add ephemeral msg to people who join with option to leave
 
     // Initialize players array, add creator to it
     players.push({
@@ -58,7 +53,7 @@ module.exports = {
     // Join to everyone else
     const message = await interaction.reply({
       embeds: [embed],
-      components: [joinMessage],
+      components: [joinLeaveMessage],
     });
 
     // Start/end to creator
@@ -70,7 +65,8 @@ module.exports = {
     const filter = (i) =>
       i.customId === 'join' ||
       i.customId === 'start' ||
-      i.customId === 'cancel';
+      i.customId === 'cancel' ||
+      i.customId === 'leave';
     const collector = message.createMessageComponentCollector({
       filter,
     });
@@ -94,6 +90,24 @@ module.exports = {
         await reply.edit({ embeds: [embed] });
         // defer the update to prevent "interaction failed" error
         i.deferUpdate();
+      } else if (i.customId === 'leave' && checkIfPlayerInGame(i)) {
+        // Remove the player from the array
+        players = players.filter((p) => p.id !== i.user.id);
+        // Update the embed description with the new player
+        embed.setDescription(
+          `__Current Players:__\n${players
+            .map((p) => p.interaction.user)
+            .join(', ')}.`,
+        );
+        const reply = await interaction.fetchReply();
+        await reply.edit({ embeds: [embed] });
+        // defer the update to prevent "interaction failed" error
+        i.deferUpdate();
+      } else if (i.customId === 'leave' && !checkIfPlayerInGame(i)) {
+        await i.reply({
+          content: 'You are not in the game!',
+          ephemeral: true,
+        });
       } else if (
         i.customId === 'start' &&
         players.length >= MINIMUM_PLAYER_COUNT
