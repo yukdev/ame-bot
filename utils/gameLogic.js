@@ -1,32 +1,22 @@
 const MINIMUM_PLAYERS = 4;
 
 const { Game } = require('../models/game');
-const { Player, Mafia, Townie, Cop, Medic } = require('../models/mafia');
-const { shuffle, getNumberOfMafia } = '../utils/helperFunctions';
+const { Player, Mafia, Townie, Cop, Medic } = require('../models/player');
+const { shuffle, getNumberOfMafia } = require('../utils/helperFunctions');
 
 let game;
 
-function startGame(message, args) {
+async function startGame(interaction, players) {
   // check if game is already in progress
-  if (message.client.game) {
-    message.channel.send('A game is already in progress!');
-    return;
-  }
+  // if (message.client.game) {
+  //   message.channel.send('A game is already in progress!');
+  //   return;
+  // }
 
   // create new game
-  game = new Game(message, args);
+  game = new Game(interaction);
   // add players to game
-  const mentionedUsers = message.mentions.users.array();
-  // if not enough players, return
-  if (mentionedUsers.length < MINIMUM_PLAYERS) {
-    message.channel.send(
-      `Cannot start a game without at least ${MINIMUM_PLAYERS} players!`,
-    );
-    return;
-  }
-
-  // add players to game
-  mentionedUsers.forEach((user) => {
+  players.forEach((user) => {
     game.addPlayer(user);
   });
 
@@ -34,60 +24,60 @@ function startGame(message, args) {
   game.inProgress = true;
 
   // send message to channel
-  message.channel.send(
-    'The game has started. Read your message carefully for your role and/or powers.',
+  await interaction.channel.send(
+    '**The game has started.**\nRead your ping carefully for your role and/or powers.',
   );
 
   setupGame();
 }
 
-function setupGame() {
+async function assignRole(
+  player,
+  user,
+  roleName,
+  roleDescription,
+  needRoleExplanation,
+  index,
+) {
+  const nickname = game.interaction.guild.members.cache.get(
+    player.id,
+  ).displayName;
+  const role = new roleName(nickname, roleDescription, player.id);
+
+  await player.interaction.followUp({
+    content: `${user.toString()} ${role.description}${
+      needRoleExplanation ? '\n' + role.roleExplanation : ''
+    }`,
+    ephemeral: true,
+  });
+
+  game.players[index] = role;
+}
+
+async function setupGame() {
   // shuffle players
   shuffle(game.players);
-  // assign roles
   // FIXME: make game more fair to mafia later
-  game.players = game.players.map((player, index) => {
-    const mafiaCount = getNumberOfMafia(game.players.length);
-    if (index < mafiaCount) {
-      return new Mafia(player.username, 'mafia');
-    } else if (index === game.players.length - 1) {
-      return new Medic(player.username, 'medic');
-    } else if (index === game.players.length - 2) {
-      return new Cop(player.username, 'cop');
-    } else {
-      return new Townie(player.username, 'townie');
-    }
-  });
-  // how come this doesn't work
-  // game.players.forEach((player, index) => {
-  //   const mafiaCount = getNumberOfMafia(game.players.length);
-  //   if (index < mafiaCount) {
-  //     player = new Mafia(player.username, 'mafia');
-  //   } else if (index === game.players.length - 1) {
-  //     player = new Medic(player.username, 'medic');
-  //   } else if (index === game.players.length - 2) {
-  //     player = new Cop(player.username, 'cop');
-  //   } else {
-  //     player = new Townie(player.username, 'townie');
-  //   }
-  // });
+  const mafiaCount = getNumberOfMafia(game.players.length);
 
-  // FIXME: not currently ephemeral
-  // send ephemeral message to players detailing their role
-  game.players.forEach((player) => {
-    if (player.role !== 'medic' && player.role !== 'cop') {
-      player.user.send(`
-      ${player.description}
-      `);
-    } else {
-      player.user.send(`
-      ${player.description}
-      ${player.roleExplanation}
-      `);
-    }
-  });
+  for (let i = 0; i < game.players.length; i++) {
+    const player = game.players[i];
+    const user = game.interaction.client.users.cache.get(player.id);
 
-  startDay();
+    if (i < mafiaCount) {
+      await assignRole(player, user, Mafia, 'mafia', false, i);
+    } else if (i === game.players.length - 1) {
+      await assignRole(player, user, Medic, 'medic', true, i);
+    } else if (i === game.players.length - 2) {
+      await assignRole(player, user, Cop, 'cop', true, i);
+    } else {
+      await assignRole(player, user, Townie, 'townie', false, i);
+    }
+  }
+
+  setTimeout(() => {
+    startDay();
+  }, 5000);
 }
 
 function startDay(killed) {
@@ -96,9 +86,9 @@ function startDay(killed) {
   // increment day
   game.day += 1;
   // check if game is over
-  if (game.checkForWin()) {
-    endGame(game.checkForWin());
-  }
+  // if (game.checkForWin()) {
+  //   endGame(game.checkForWin());
+  // }
 
   // reset medic, cop, and protected player
   const medic = game.players.find((player) => player.role === 'medic');
@@ -108,26 +98,28 @@ function startDay(killed) {
   const protectedPlayer = game.players.find(
     (player) => player.role === 'protected',
   );
-  protectedPlayer.removeProtection();
+  if (protectedPlayer) {
+    protectedPlayer.removeProtection();
+  }
 
   // declare it is day
-  game.message.channel.send('It is now day.');
+  game.interaction.channel.send('It is now day.');
   // if there were kill(s) last night, send message to channel
   if (killed) {
     if (killed.length === 0) {
-      game.message.channel.send('No one was killed last night.');
+      game.interaction.channel.send('No one was killed last night.');
     } else if (killed.length === 1) {
-      game.message.channel.send(
+      game.interaction.channel.send(
         `${killed.length} player was killed last night: ${killed[0].name}`,
       );
     } else if (killed.length === 2) {
-      game.message.channel.send(
+      game.interaction.channel.send(
         `${killed.length} players were killed last night: ${killed[0].name} and ${killed[1].name}`,
       );
     } else {
       const killedNames = killed.map((player) => player.name);
       const lastKilled = killedNames.pop();
-      game.message.channel.send(
+      game.interaction.channel.send(
         `${
           killed.length + 1
         } players were killed last night: ${killedNames.join(
@@ -137,9 +129,11 @@ function startDay(killed) {
     }
   }
   // tell players to discuss
-  game.message.channel.send(`
-  Please discuss who you think is suspicious.
-  You can nominate a player to make a defense with /nominate`);
+  game.interaction.channel.send(
+    'Please discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
+  );
+
+  return;
 }
 
 function startNight() {

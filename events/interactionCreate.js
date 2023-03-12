@@ -1,10 +1,4 @@
-const {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-  Events,
-} = require('discord.js');
+const { Events } = require('discord.js');
 
 module.exports = {
   name: Events.InteractionCreate,
@@ -20,33 +14,11 @@ module.exports = {
       return;
     }
 
-    if (interaction.commandName === 'button') {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('primary')
-          .setLabel('Primary')
-          .setStyle(ButtonStyle.PRIMARY),
-      );
-
-      const embed = new EmbedBuilder()
-        .setColor(0x0099ff)
-        .setTitle('Some title')
-        .setURL('https://discord.js.org')
-        .setDescription('Some description here');
-
-      await interaction.reply({
-        content: 'I think you should',
-        ephemeral: true,
-        embeds: [embed],
-        components: [row],
-      });
-    } else {
-      try {
-        await command.execute(interaction);
-      } catch (error) {
-        console.error(`Error executing ${interaction.commandName}`);
-        console.error(error);
-      }
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(`Error executing ${interaction.commandName}`);
+      console.error(error);
     }
   },
 };

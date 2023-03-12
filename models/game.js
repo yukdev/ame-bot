@@ -4,9 +4,8 @@ const { startNight } = require('../utils/gameLogic');
  * Mafia Game Class
  */
 class Game {
-  constructor(message, args) {
-    this.message = message;
-    this.args = args;
+  constructor(interaction) {
+    this.interaction = interaction;
     this.players = [];
     this.votes = {};
     this.inProgress = false;
@@ -103,4 +102,6 @@ class Game {
   }
 }
 
-module.exports = Game;
+module.exports = {
+  Game,
+};
