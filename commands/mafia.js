@@ -1,4 +1,5 @@
-const MINIMUM_PLAYERS = 4;
+let players = [];
+const MINIMUM_PLAYER_COUNT = 4;
 
 const { startGame } = require('../utils/gameLogic');
 
@@ -15,17 +16,45 @@ module.exports = {
     .setName('mafia')
     .setDescription('Starts a game of Mafia!'),
   async execute(interaction) {
-    const row = new ActionRowBuilder().addComponents(
+    const row = new ActionRowBuilder();
+
+    // FIXME: this isn't working - everyone can see and use every button
+    // Add a "Join Mafia Game" button for everyone
+    row.addComponents(
       new ButtonBuilder()
         .setCustomId('join')
-        .setLabel('Join Mafia Game')
+        .setLabel('Join')
         .setStyle(ButtonStyle.Success),
     );
+
+    // Add a "Start Game" button that is only visible to the creator
+    if (interaction.user.id === interaction.member.user.id) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId('start')
+          .setLabel('Start')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('cancel')
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Danger),
+      );
+    } else {
+      // If the user is not the creator, disable the row
+      row.setDisabled(true);
+    }
+
+    // Initialize players array, add creator to it
+    players.push({
+      name: interaction.user.username,
+      id: interaction.user.id,
+      interaction,
+    });
 
     const embed = new EmbedBuilder()
       .setColor(0x0099ff)
       .setTitle(`${interaction.user.username} has started a game of Mafia!`)
-      .setDescription('Click the button to join!');
+      .setDescription(`Players: ${players.map((p) => p.interaction.user)}`);
 
     const message = await interaction.reply({
       embeds: [embed],
@@ -33,49 +62,69 @@ module.exports = {
     });
 
     const filter = (i) =>
-      i.customId === 'join' && i.user.id !== interaction.user.id;
+      i.customId === 'join' ||
+      i.customId === 'start' ||
+      i.customId === 'cancel';
     const collector = message.createMessageComponentCollector({
       filter,
-      time: 5000,
     });
 
-    // Create an array of player objects for the game
-    // add the creator of the game to the array
-    const players = [
-      { name: interaction.user.username, id: interaction.user.id, interaction },
-    ];
     // add the players who clicked the button to the array
     collector.on('collect', async (i) => {
-      // grab user of person who clicks
-      const playerName = i.user.username;
-      if (players.some((p) => p.id === i.user.id)) {
+      if (checkIfPlayerInGame(i) && i.customId === 'join') {
         await i.reply({
           content: 'You have already joined the game!',
           ephemeral: true,
         });
-      } else {
+      } else if (i.customId === 'join') {
         players.push({ name: i.user.username, id: i.user.id, interaction: i });
+        // Update the embed description with the new player
+        embed.setDescription(
+          `__Current Players:__\n${players
+            .map((p) => p.interaction.user)
+            .join(', ')}.`,
+        );
+        const reply = await interaction.fetchReply();
+        await reply.edit({ embeds: [embed] });
+        // defer the update to prevent "interaction failed" error
+        i.deferUpdate();
+      } else if (
+        i.customId === 'start' &&
+        players.length >= MINIMUM_PLAYER_COUNT
+      ) {
         await i.reply({
-          content: 'You have joined the game!',
+          content: 'Starting the game with ' + players.length + ' players!',
           ephemeral: true,
         });
-        await interaction.channel.send({
-          content: `${playerName} has joined the game!`,
-        });
-      }
-    });
-
-    // Start the game once the time runs out or all players have joined
-    collector.on('end', async () => {
-      const numPlayers = players.length;
-      if (numPlayers < MINIMUM_PLAYERS) {
-        await interaction.followUp('Not enough players to start the game.');
-      } else {
-        await interaction.followUp(
-          'Starting the game with ' + numPlayers + ' players!',
-        );
         startGame(interaction, players);
+
+        // Delete the bot's message after the game starts
+        const reply = await interaction.fetchReply();
+        await reply.delete();
+
+        collector.stop();
+      } else if (
+        i.customId === 'start' &&
+        players.length < MINIMUM_PLAYER_COUNT
+      ) {
+        await i.reply({
+          content: `You need at least ${MINIMUM_PLAYER_COUNT} players to start the game!`,
+          ephemeral: true,
+        });
+      } else if (
+        i.customId === 'cancel' &&
+        interaction.user.id === interaction.member.user.id
+      ) {
+        // Delete the bot's message and stop the collector
+        const reply = await interaction.fetchReply();
+        await reply.delete();
+        collector.stop();
+        players = [];
       }
     });
   },
 };
+
+function checkIfPlayerInGame(clicker) {
+  return players.some((p) => p.id === clicker.user.id);
+}

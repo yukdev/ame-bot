@@ -1,16 +1,32 @@
-const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require('discord.js');
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  EmbedBuilder,
+  ChannelType,
+} = require('discord.js');
 const { Game } = require('../models/game');
 const { Player, Mafia, Townie, Cop, Medic } = require('../models/player');
 const { shuffle, getNumberOfMafia } = require('../utils/helperFunctions');
 
 let game;
 
+const mafia = [];
+const townies = [];
+let cop;
+let medic;
+const mafiaInteractions = [];
+const copInteractions = [];
+const medicInteractions = [];
+let mafiaThread;
+let copThread;
+let medicThread;
+
 async function startGame(interaction, players) {
   // check if game is already in progress
-  // if (message.client.game) {
-  //   message.channel.send('A game is already in progress!');
-  //   return;
-  // }
+  if (interaction.client.game) {
+    await interaction.channel.send('A game is already in progress!');
+    return;
+  }
 
   // create new game
   game = new Game(interaction);
@@ -53,6 +69,24 @@ async function assignRole(
     ephemeral: true,
   });
 
+  switch (roleName) {
+    case Mafia:
+      mafia.push(role);
+      mafiaInteractions.push(player.interaction);
+      break;
+    case Cop:
+      cop = role;
+      copInteractions.push(player.interaction);
+      break;
+    case Medic:
+      medic = role;
+      medicInteractions.push(player.interaction);
+      break;
+    default:
+      townies.push(role);
+      break;
+  }
+
   game.players[index] = role;
 }
 
@@ -77,12 +111,56 @@ async function setupGame() {
     }
   }
 
+  // send an ephemeral reply to each mafia member telling them who their fellow mafia mates are
+  const mafiaMates = game.players.filter((p) => p instanceof Mafia);
+  const mafiaMatesUsers = mafiaMates.map((p) =>
+    game.interaction.client.users.cache.get(p.id),
+  );
+  mafiaInteractions.forEach(async (interaction) => {
+    await interaction.followUp({
+      content:
+        mafiaMatesUsers.length > 1
+          ? `Your fellow mafia mates are:\n${mafiaMatesUsers
+              .filter((m) => m.id !== interaction.user.id)
+              .map((m) => m.toString())
+              .join(' ')}`
+          : 'You are the only mafia member.',
+      ephemeral: true,
+    });
+  });
+
+  // create a new private thread for the mafia players
+  const mafiaThreadTopic = `Private thread for Mafia game discussion between ${mafiaInteractions
+    .map((m) => m.user.displayName)
+    .join(', ')}.`;
+  mafiaThread = await createPrivateThread(
+    'Mafia Private Thread',
+    mafiaInteractions,
+    mafiaThreadTopic,
+  );
+
+  // create a new private thread for the cop
+  const copThreadTopic = 'Private thread for the Cop.';
+  copThread = await createPrivateThread(
+    'Cop Private Thread',
+    copInteractions,
+    copThreadTopic,
+  );
+
+  // create a new private thread for the medic
+  const medicThreadTopic = 'Private thread for the Medic.';
+  medicThread = await createPrivateThread(
+    'Medic Private Thread',
+    medicInteractions,
+    medicThreadTopic,
+  );
+
   setTimeout(() => {
     startDay();
   }, 5000);
 }
 
-function startDay(killed) {
+function startDay(killed = [cop, medic]) {
   // set cycle to day
   game.cycle = 'day';
   // increment day
@@ -92,44 +170,63 @@ function startDay(killed) {
     endGame(game.checkForWin());
   }
 
+  // reset votes and voted properties
+  game.votes = {};
+  game.voted = null;
+  game.players.forEach((p) => (p.voted = false));
+
   // reset medic, cop, and protected player
-  const medic = game.players.find((player) => player.role === 'medic');
-  medic.reset();
-  const cop = game.players.find((player) => player.role === 'cop');
-  cop.reset();
-  const protectedPlayer = game.players.find(
-    (player) => player.role === 'protected',
-  );
+  if (medic.alive) {
+    medic.reset();
+  }
+  if (cop.alive) {
+    cop.reset();
+  }
+  const protectedPlayer = game.players.find((player) => player.protected);
   if (protectedPlayer) {
     protectedPlayer.removeProtection();
   }
 
   // declare it is day
-  game.interaction.channel.send('It is now day.');
+  game.interaction.channel.send(`It is now day ${game.day}.`);
+
   // if there were kill(s) last night, send message to channel
   if (killed) {
     if (killed.length === 0) {
       game.interaction.channel.send('No one was killed last night.');
     } else if (killed.length === 1) {
       game.interaction.channel.send(
-        `${killed.length} player was killed last night: ${killed[0].name}`,
+        `${
+          killed.length
+        } player was killed last night: ${game.interaction.client.users.cache
+          .get(killed[0].id)
+          .toString()}`,
       );
     } else if (killed.length === 2) {
       game.interaction.channel.send(
-        `${killed.length} players were killed last night: ${killed[0].name} and ${killed[1].name}`,
+        `${
+          killed.length
+        } players were killed last night: ${game.interaction.client.users.cache
+          .get(killed[0].id)
+          .toString()} and ${game.interaction.client.users.cache
+          .get(killed[1].id)
+          .toString()}`,
       );
     } else {
-      const killedNames = killed.map((player) => player.name);
-      const lastKilled = killedNames.pop();
+      const killedPlayers = killed.map((player) =>
+        game.interaction.client.users.cache.get(player.id),
+      );
+      const lastKilled = killedPlayers.pop();
       game.interaction.channel.send(
         `${
           killed.length + 1
-        } players were killed last night: ${killedNames.join(
+        } players were killed last night: ${killedPlayers.join(
           ', ',
         )}, and ${lastKilled}.`,
       );
     }
   }
+
   // tell players to discuss
   game.interaction.channel.send(
     'Please discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
@@ -142,9 +239,10 @@ function startDay(killed) {
   }, 10000);
 }
 
-function promptDefense() {
+async function promptDefense() {
   game.inNomination = false;
-  game.promptDefense();
+
+  game.interaction.channel.send('You have 2 minutes to make your defense.');
 
   setTimeout(() => {
     startLynchVote();
@@ -155,7 +253,7 @@ function promptDefense() {
 async function startLynchVote() {
   game.inLynching = true;
 
-  // get voted player's id
+  // get voted player
   const votedPlayerId = game.players.find((p) => p.name === game.voted).id;
   const votedPlayerUser = await game.interaction.client.users.fetch(
     votedPlayerId,
@@ -163,6 +261,7 @@ async function startLynchVote() {
   await game.interaction.channel.send(
     `Please vote if you would like to lynch ${votedPlayerUser}`,
   );
+
   const yesButton = new ButtonBuilder()
     .setCustomId('yes')
     .setLabel('Yes')
@@ -201,7 +300,7 @@ async function startLynchVote() {
     // get player who voted
     const player = game.players.find((p) => p.id === i.user.id);
     // get lynch target
-    const target = game.players.find((p) => p.name === game.voted);
+    const target = game.voted;
     // if player has already voted, return
     if (player.hasVoted) return;
     if (i.customId === 'yes') {
@@ -220,13 +319,44 @@ async function startLynchVote() {
   });
 
   collector.on('end', async () => {
-    game.determineLynch();
+    // if there is a majority vote
+    if (game.determineLynch()) {
+      // get player object from player name
+      const votedPlayer = game.players.find(
+        (p) => p.name === Object.keys(game.votes)[0],
+      );
+      // kill player
+      votedPlayer.kill();
+      // get player's user object
+      const playerUser = await game.interaction.client.users.fetch(
+        votedPlayer.id,
+      );
+      await game.interaction.channel.send(`${playerUser} has been lynched.`);
+      // check if game is over
+      if (game.checkForWin()) {
+        endGame(game.checkForWin());
+      }
+      startNight();
+    } else {
+      // send message to channel saying there was no majority vote
+      await game.interaction.channel.send('There was no majority vote.');
+    }
+    // reset votes and voted properties
+    game.votes = {};
+    game.voted = null;
+    game.players.forEach((p) => (p.voted = false));
+    return;
   });
 }
 
-function startNight() {
+async function startNight() {
   // set cycle to night
   game.cycle = 'night';
+
+  // unlock mafia thread to let them discuss
+  await mafiaThread.setLocked(false);
+  await copThread.setLocked(false);
+  await medicThread.setLocked(false);
 
   let [mafiaDone, copDone, medicDone] = [false, false, false];
   const killed = [];
@@ -295,11 +425,42 @@ function startNight() {
 
 function endGame(winner) {
   if (winner === 'mafia') {
-    game.message.channel.send('The mafia has won!');
+    game.interaction.channel.send('The mafia has won!');
   } else if (winner === 'townies') {
-    game.message.channel.send('The townies have won!');
+    game.interaction.channel.send('The townies have won!');
   }
   game = null;
+}
+
+async function createPrivateThread(name, interactions, topic) {
+  const options = {
+    autoArchiveDuration: 60,
+    name,
+    reason: 'Private thread for Mafia game discussion',
+    type: ChannelType.PrivateThread,
+    invitable: true,
+    parent: game.interaction.channel.parent,
+    topic,
+  };
+  const thread = await game.interaction.channel.threads.create(options);
+
+  // lock the thread initially
+  await thread.setLocked(true);
+
+  // invite the members to the thread
+  await Promise.all(
+    interactions.map(async (member) => {
+      try {
+        await thread.members.add(member.user);
+      } catch (err) {
+        console.error(
+          `Failed to add member ${member.member.nickname} to the thread: ${err}`,
+        );
+      }
+    }),
+  );
+
+  return thread;
 }
 
 module.exports = {
