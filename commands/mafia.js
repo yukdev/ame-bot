@@ -18,6 +18,7 @@ module.exports = {
     .setName('mafia')
     .setDescription('Starts a game of Mafia!'),
   async execute(interaction) {
+    // If a game is already being set up, respond to the user and return
     if (setupInProgress) {
       await interaction.reply({
         content: 'A game is already being set up.',
@@ -85,72 +86,73 @@ module.exports = {
 
     // add the players who clicked the button to the array
     collector.on('collect', async (i) => {
-      if (checkIfPlayerInGame(i) && i.customId === 'join') {
-        await i.reply({
-          content: 'You have already joined the game!',
-          ephemeral: true,
-        });
-      } else if (i.customId === 'join') {
-        players.push({ name: i.user.username, id: i.user.id, interaction: i });
-        // Update the embed description with the new player
-        embed.setDescription(
-          `__Current Players:__\n${players
-            .map((p) => p.interaction.user)
-            .join(', ')}`,
-        );
-        const reply = await interaction.fetchReply();
-        await reply.edit({ embeds: [embed] });
-        // defer the update to prevent "interaction failed" error
-        i.deferUpdate();
-      } else if (i.customId === 'leave' && checkIfPlayerInGame(i)) {
-        // Remove the player from the array
-        players = players.filter((p) => p.id !== i.user.id);
-        // Update the embed description with the new player
-        embed.setDescription(
-          `__Current Players:__\n${players
-            .map((p) => p.interaction.user)
-            .join(', ')}`,
-        );
-        const reply = await interaction.fetchReply();
-        await reply.edit({ embeds: [embed] });
-        // defer the update to prevent "interaction failed" error
-        i.deferUpdate();
-      } else if (i.customId === 'leave' && !checkIfPlayerInGame(i)) {
-        await i.reply({
-          content: 'You are not in the game!',
-          ephemeral: true,
-        });
-      } else if (
-        i.customId === 'start' &&
-        players.length >= MINIMUM_PLAYER_COUNT
-      ) {
-        await i.reply({
-          content: 'Starting the game with ' + players.length + ' players!',
-          ephemeral: true,
-        });
-        startGame(interaction, players);
+      if (i.customId === 'join') {
+        if (checkIfPlayerInGame(i)) {
+          await i.reply({
+            content: 'You have already joined the game!',
+            ephemeral: true,
+          });
+        } else {
+          players.push({
+            name: i.user.username,
+            id: i.user.id,
+            interaction: i,
+          });
 
-        // Delete the bot's message after the game starts
-        const reply = await interaction.fetchReply();
-        await reply.delete();
+          embed.setDescription(
+            `__Current Players:__\n${players
+              .map((p) => p.interaction.user)
+              .join(', ')}`,
+          );
 
-        collector.stop();
-      } else if (
-        i.customId === 'start' &&
-        players.length < MINIMUM_PLAYER_COUNT
-      ) {
-        await i.reply({
-          content: `You need at least ${MINIMUM_PLAYER_COUNT} players to start the game!`,
-          ephemeral: true,
-        });
+          const reply = await interaction.fetchReply();
+          await reply.edit({ embeds: [embed] });
+          i.deferUpdate();
+        }
+      } else if (i.customId === 'leave') {
+        if (checkIfPlayerInGame(i)) {
+          players = players.filter((p) => p.id !== i.user.id);
+          embed.setDescription(
+            `__Current Players:__\n${players
+              .map((p) => p.interaction.user)
+              .join(', ')}`,
+          );
+
+          const reply = await interaction.fetchReply();
+          await reply.edit({ embeds: [embed] });
+          i.deferUpdate();
+        } else {
+          await i.reply({
+            content: 'You are not in the game!',
+            ephemeral: true,
+          });
+        }
+      } else if (i.customId === 'start') {
+        if (players.length >= MINIMUM_PLAYER_COUNT) {
+          await i.reply({
+            content: 'Starting the game with ' + players.length + ' players!',
+            ephemeral: true,
+          });
+          startGame(interaction, players);
+
+          const reply = await interaction.fetchReply();
+          await reply.delete();
+
+          collector.stop();
+        } else {
+          await i.reply({
+            content: `You need at least ${MINIMUM_PLAYER_COUNT} players to start the game!`,
+            ephemeral: true,
+          });
+        }
       } else if (i.customId === 'cancel') {
         setupInProgress = false;
-        // Delete the bot's message and stop the collector
+
         const reply = await interaction.fetchReply();
         await reply.delete();
-        collector.stop();
-        // acknowledge the cancel silently
         i.deferUpdate();
+
+        collector.stop();
         players = [];
       }
     });
