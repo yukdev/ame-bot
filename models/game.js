@@ -12,7 +12,8 @@ class Game {
     this.inHanging = false;
     this.day = 0;
     this.cycle = 'day';
-    this.dayTime = 0;
+    this.dayTime = 300;
+    this.dayOver = false;
     this.timerIntervalId = null;
   }
 
@@ -63,38 +64,43 @@ class Game {
 
   clearVotes() {
     this.votes = {};
-    this.accused = undefined;
+    this.accused = null;
   }
 
-  startTimer(duration, callback) {
-    this.dayTime = duration;
+  startDayTimer() {
     this.timerIntervalId = setInterval(() => {
       this.dayTime -= 1;
       console.log('startTimer: ', this.dayTime);
       if (this.dayTime <= 0) {
+        this.dayOver = true;
         clearInterval(this.timerIntervalId);
-        callback();
       }
     }, 1000);
   }
 
-  pauseTimer() {
+  pauseDayTimer() {
     console.log('pauseTimer: ', this.dayTime);
     clearInterval(this.timerIntervalId);
   }
 
-  resumeTimer(callback) {
-    this.timerIntervalId = setInterval(() => {
-      this.dayTime -= 1;
-      console.log('resumeTimer: ', this.dayTime);
-      if (this.dayTime <= 0) {
-        clearInterval(this.timerIntervalId);
-        callback();
+  setupNewDay() {
+    this.day += 1;
+    this.cycle = 'day';
+    this.dayTime = 300;
+    this.dayOver = false;
+    this.clearVotes();
+    this.players.forEach((p) => {
+      if (p.alive) {
+        if (p.role === 'cop' || p.role === 'medic') {
+          p.reset();
+        }
+        if (p.protected) {
+          p.removeProtection();
+        }
       }
-    }, 1000);
+      p.voted = false;
+    });
   }
-
-  resetTimer() {}
 }
 
 module.exports = {

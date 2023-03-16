@@ -21,7 +21,7 @@ module.exports = {
   async execute(interaction) {
     const game = interaction.client.game;
     // pause game timer
-    game.pauseTimer();
+    game.pauseDayTimer();
 
     // no game in progress
     if (!game?.inProgress) {
@@ -147,7 +147,7 @@ module.exports = {
         await interaction.channel.send(`No one agreed to nominate ${selected}`);
         await message.delete();
         collector.stop();
-        game.resumeTimer(startNight);
+        game.resumeDayTimer();
       }
     });
   },

@@ -1,5 +1,7 @@
-let players = [];
 const MINIMUM_PLAYER_COUNT = 4;
+
+let players = [];
+let setupInProgress = false;
 
 const { startGame } = require('../utils/gameLogic');
 
@@ -16,6 +18,16 @@ module.exports = {
     .setName('mafia')
     .setDescription('Starts a game of Mafia!'),
   async execute(interaction) {
+    if (setupInProgress) {
+      await interaction.reply({
+        content: 'A game is already being set up.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    setupInProgress = true;
+
     const joinLeaveMessage = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('join')
@@ -50,7 +62,7 @@ module.exports = {
       .setTitle(`${interaction.user.username} has started a game of Mafia!`)
       .setDescription(`__Current Players:__\n${interaction.user}`);
 
-    // Join to everyone else
+    // Send message with join/leave buttons
     const message = await interaction.reply({
       embeds: [embed],
       components: [joinLeaveMessage],
@@ -132,6 +144,7 @@ module.exports = {
           ephemeral: true,
         });
       } else if (i.customId === 'cancel') {
+        setupInProgress = false;
         // Delete the bot's message and stop the collector
         const reply = await interaction.fetchReply();
         await reply.delete();

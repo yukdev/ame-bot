@@ -168,30 +168,14 @@ async function setupGame() {
 /* -------------------------------- Day Start ------------------------------- */
 
 function startDay(killed) {
-  // set cycle to day
-  game.cycle = 'day';
   // increment day
-  game.day += 1;
+  // set time to day
+  // reset day timer
+  // clear votes from game & players
+  game.setupNewDay();
   // check if game is over
   if (game.checkForWin()) {
     endGame(game.checkForWin(), game);
-  }
-
-  // reset votes and voted properties
-  game.votes = {};
-  game.accused = null;
-  game.players.forEach((p) => (p.voted = false));
-
-  // reset medic, cop, and protected player
-  if (medic.alive) {
-    medic.reset();
-  }
-  if (cop.alive) {
-    cop.reset();
-  }
-  const protectedPlayer = game.players.find((player) => player.protected);
-  if (protectedPlayer) {
-    protectedPlayer.removeProtection();
   }
 
   // declare it is day
@@ -240,9 +224,8 @@ function startDay(killed) {
   );
 
   game.inNomination = true;
-
-  // start a timer for 5 minutes
-  game.startTimer(10, startNight);
+  // start day timer of 5 minutes
+  game.startDayTimer();
 }
 
 async function promptDefense() {
