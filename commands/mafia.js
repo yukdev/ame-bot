@@ -48,7 +48,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setColor(0x0099ff)
       .setTitle(`${interaction.user.username} has started a game of Mafia!`)
-      .setDescription(`Players: ${players.map((p) => p.interaction.user)}`);
+      .setDescription(`__Current Players:__\n${interaction.user}`);
 
     // Join to everyone else
     const message = await interaction.reply({
@@ -84,7 +84,7 @@ module.exports = {
         embed.setDescription(
           `__Current Players:__\n${players
             .map((p) => p.interaction.user)
-            .join(', ')}.`,
+            .join(', ')}`,
         );
         const reply = await interaction.fetchReply();
         await reply.edit({ embeds: [embed] });
@@ -97,7 +97,7 @@ module.exports = {
         embed.setDescription(
           `__Current Players:__\n${players
             .map((p) => p.interaction.user)
-            .join(', ')}.`,
+            .join(', ')}`,
         );
         const reply = await interaction.fetchReply();
         await reply.edit({ embeds: [embed] });
@@ -131,14 +131,13 @@ module.exports = {
           content: `You need at least ${MINIMUM_PLAYER_COUNT} players to start the game!`,
           ephemeral: true,
         });
-      } else if (
-        i.customId === 'cancel' &&
-        interaction.user.id === interaction.member.user.id
-      ) {
+      } else if (i.customId === 'cancel') {
         // Delete the bot's message and stop the collector
         const reply = await interaction.fetchReply();
         await reply.delete();
         collector.stop();
+        // acknowledge the cancel silently
+        i.deferUpdate();
         players = [];
       }
     });

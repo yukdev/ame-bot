@@ -8,7 +8,6 @@ class Player {
     this.nominated = false;
     this.voted = false;
     this.protected = false;
-    this.description;
   }
 
   // kill this player
@@ -41,7 +40,7 @@ class Cop extends Townie {
   constructor(name, role, description) {
     super(name, role, description);
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to investigate a player to see if they are a member of the mafia.`;
-    this.checkedPlayer;
+    this.checkedPlayer = null;
   }
 
   // actions
@@ -51,7 +50,7 @@ class Cop extends Townie {
   }
 
   reset() {
-    this.checkedPlayer = undefined;
+    this.checkedPlayer = null;
   }
 }
 
@@ -59,7 +58,7 @@ class Medic extends Townie {
   constructor(name, role, description) {
     super(name, role, description);
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to protect a player from being killed.\nYou cannot protect yourself nor can you protect the same person twice in a row.`;
-    this.protectedPlayer;
+    this.protectedPlayer = null;
   }
 
   protect(player) {
@@ -68,16 +67,16 @@ class Medic extends Townie {
   }
 
   reset() {
-    this.protectedPlayer = undefined;
+    this.protectedPlayer = null;
   }
 }
 
-class Vigilante extends Townie {
-  constructor(name, role, description) {
-    super(name, role, description);
-    this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nYou have the ability to kill a player only once at night.`;
-  }
-}
+// class Vigilante extends Townie {
+//   constructor(name, role, description) {
+//     super(name, role, description);
+//     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nYou have the ability to kill a player only once at night.`;
+//   }
+// }
 
 module.exports = {
   Player,
@@ -85,5 +84,5 @@ module.exports = {
   Townie,
   Cop,
   Medic,
-  Vigilante,
+  // Vigilante,
 };
