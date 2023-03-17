@@ -4,7 +4,7 @@ import type { Game } from '../models/game';
 
 
 // shuffle an array
-function shuffle(array: any[]) {
+export function shuffle(array: any[]) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
@@ -12,12 +12,12 @@ function shuffle(array: any[]) {
 }
 
 // get role for a player
-function getRole(player: Player) {
+export function getRole(player: Player) {
   return player.role;
 }
 
 // determine how many of each role based on number of players
-function getNumberOfMafia(numPlayers: number) {
+export function getNumberOfMafia(numPlayers: number) {
   switch (numPlayers) {
     // if 4-5 players: 1 mafia
     case 4 || 5:
@@ -33,7 +33,7 @@ function getNumberOfMafia(numPlayers: number) {
   }
 }
 
-function endGame(winner: string, game: Game) {
+export function endGame(winner: string, game: Game) {
   const gameChannel = game.interaction.channel;
 
   if (gameChannel) {
@@ -45,7 +45,7 @@ function endGame(winner: string, game: Game) {
   }
 }
 
-async function createPrivateThread(name, interactions, topic, game) {
+export async function createPrivateThread(name, interactions, topic, game) {
   const options = {
     autoArchiveDuration: 60,
     name,
@@ -75,11 +75,3 @@ async function createPrivateThread(name, interactions, topic, game) {
 
   return thread;
 }
-
-module.exports = {
-  shuffle,
-  getRole,
-  getNumberOfMafia,
-  endGame,
-  createPrivateThread,
-};
