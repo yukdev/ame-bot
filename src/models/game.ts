@@ -1,7 +1,7 @@
 /**
  * Mafia Game Class
  */
-class Game {
+export class Game {
   constructor(interaction) {
     this.interaction = interaction;
     this.players = [];
@@ -145,7 +145,3 @@ class Game {
     });
   }
 }
-
-module.exports = {
-  Game,
-};
