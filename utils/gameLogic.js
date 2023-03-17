@@ -51,47 +51,6 @@ async function startGame(interaction, players) {
   setupGame();
 }
 
-async function assignRole(
-  player,
-  user,
-  roleName,
-  roleDescription,
-  needRoleExplanation,
-  index,
-) {
-  const nickname = game.interaction.guild.members.cache.get(
-    player.id,
-  ).displayName;
-  const role = new roleName(nickname, roleDescription, player.id);
-
-  await player.interaction.followUp({
-    content: `${user.toString()} ${role.description}${
-      needRoleExplanation ? '\n' + role.roleExplanation : ''
-    }`,
-    ephemeral: true,
-  });
-
-  switch (roleName) {
-    case Mafia:
-      mafia.push(role);
-      mafiaInteractions.push(player.interaction);
-      break;
-    case Cop:
-      cop = role;
-      copInteractions.push(player.interaction);
-      break;
-    case Medic:
-      medic = role;
-      medicInteractions.push(player.interaction);
-      break;
-    default:
-      townies.push(role);
-      break;
-  }
-
-  game.players[index] = role;
-}
-
 async function setupGame() {
   // shuffle players
   shuffle(game.players);
@@ -100,22 +59,20 @@ async function setupGame() {
 
   for (let i = 0; i < game.players.length; i++) {
     const player = game.players[i];
-    const user = game.interaction.client.users.cache.get(player.id);
 
     if (i < mafiaCount) {
-      await assignRole(player, user, Mafia, 'mafia', false, i);
+      await assignRole(player, Mafia, i);
     } else if (i === game.players.length - 1) {
-      await assignRole(player, user, Medic, 'medic', true, i);
+      await assignRole(player, Medic, i);
     } else if (i === game.players.length - 2) {
-      await assignRole(player, user, Cop, 'cop', true, i);
+      await assignRole(player, Cop, i);
     } else {
-      await assignRole(player, user, Townie, 'townie', false, i);
+      await assignRole(player, Townie, i);
     }
   }
 
   // send an ephemeral reply to each mafia member telling them who their fellow mafia mates are
-  const mafiaMates = game.players.filter((p) => p instanceof Mafia);
-  const mafiaMatesUsers = mafiaMates.map((p) =>
+  const mafiaMatesUsers = mafia.map((p) =>
     game.interaction.client.users.cache.get(p.id),
   );
   mafiaInteractions.forEach(async (interaction) => {
@@ -132,9 +89,7 @@ async function setupGame() {
   });
 
   // create a new private thread for the mafia players
-  const mafiaThreadTopic = `Private thread for Mafia game discussion between ${mafiaInteractions
-    .map((m) => m.user.displayName)
-    .join(', ')}.`;
+  const mafiaThreadTopic = 'Private thread for the Mafia';
   mafiaThread = await createPrivateThread(
     'Mafia Private Thread',
     mafiaInteractions,
@@ -162,7 +117,7 @@ async function setupGame() {
 
   setTimeout(() => {
     startDay();
-  }, 1000 * 5);
+  }, 1000 * 1);
 }
 
 /* -------------------------------- Day Start ------------------------------- */
@@ -182,54 +137,39 @@ function startDay(killed) {
   game.interaction.channel.send(`It is now day ${game.day}.`);
 
   // if there were kill(s) last night, send message to channel
+  // this probably needs a refactor
   if (killed) {
-    if (killed.length === 0) {
-      game.interaction.channel.send('No one was killed last night.');
-    } else if (killed.length === 1) {
-      game.interaction.channel.send(
-        `${
-          killed.length
-        } player was killed last night: ${game.interaction.client.users.cache
-          .get(killed[0].id)
-          .toString()}`,
-      );
-    } else if (killed.length === 2) {
-      game.interaction.channel.send(
-        `${
-          killed.length
-        } players were killed last night: ${game.interaction.client.users.cache
-          .get(killed[0].id)
-          .toString()} and ${game.interaction.client.users.cache
-          .get(killed[1].id)
-          .toString()}`,
-      );
-    } else {
-      const killedPlayers = killed.map((player) =>
-        game.interaction.client.users.cache.get(player.id),
-      );
-      const lastKilled = killedPlayers.pop();
-      game.interaction.channel.send(
-        `${
-          killed.length + 1
-        } players were killed last night: ${killedPlayers.join(
-          ', ',
-        )}, and ${lastKilled}.`,
-      );
-    }
+    const numKilled = killed.length;
+    const killedPlayers = killed.map((player) =>
+      game.interaction.client.users.cache.get(player.id).toString(),
+    );
+
+    const killReport =
+      numKilled === 0
+        ? 'No one was killed last night.'
+        : numKilled === 1
+        ? `${numKilled} player was killed last night: ${killedPlayers[0].toString()}`
+        : numKilled === 2
+        ? `${numKilled} players were killed last night: ${killedPlayers[0].toString()} and ${killedPlayers[1].toString()}`
+        : `${numKilled} players were killed last night: ${killedPlayers
+            .slice(0, -1)
+            .join(', ')}, and ${killedPlayers.slice(-1)[0].toString()}.`;
+
+    game.interaction.channel.send(killReport);
   }
 
   // tell players to discuss
   game.interaction.channel.send(
-    'Please discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
+    'You have 5 minutes to discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
   );
 
-  game.inNomination = true;
+  game.state = 'nomination';
   // start day timer of 5 minutes
-  game.startDayTimer();
+  game.startDayTimer(startNight);
 }
 
 async function promptDefense() {
-  game.inNomination = false;
+  game.state = 'defense';
 
   game.interaction.channel.send('You have 2 minutes to make your defense.');
 
@@ -244,20 +184,19 @@ async function promptDefense() {
 
 async function startHangingVote() {
   // set game to hanging phase
-  game.inHanging = true;
+  game.state = 'hanging';
 
   // get voted player
-  const votedPlayer = game.players.find((p) => p === game.accused);
-  const votedPlayerUser = await game.interaction.client.users.fetch(
-    votedPlayer.id,
+  const accusedPlayer = game.accused;
+  const accusedPlayerDiscord = await game.interaction.client.users.fetch(
+    accusedPlayer.id,
   );
 
   // clear votes
   game.clearVotes();
-  game.players.forEach((p) => (p.voted = false));
 
   await game.interaction.channel.send(
-    `Please vote if you would like to hang ${votedPlayerUser}`,
+    `Please vote if you would like to hang ${accusedPlayerDiscord}`,
   );
 
   const yesButton = new ButtonBuilder()
@@ -269,17 +208,19 @@ async function startHangingVote() {
     .setLabel('No')
     .setStyle('Danger');
 
-  const row = new ActionRowBuilder().addComponents([yesButton, noButton]);
+  const buttons = new ActionRowBuilder().addComponents([yesButton, noButton]);
 
   const embed = new EmbedBuilder()
     .setTitle(
       'You have 15 seconds to vote.\nIf you do not vote, you will be considered abstaining.',
     )
-    .setDescription(`Please vote if you would like to hang ${votedPlayerUser}`);
+    .setDescription(
+      `Please vote if you would like to hang ${accusedPlayerDiscord}`,
+    );
 
   const message = await game.interaction.channel.send({
     embeds: [embed],
-    components: [row],
+    components: [buttons],
   });
 
   const filter = (i) => i.customId === 'yes' || i.customId === 'no';
@@ -292,44 +233,58 @@ async function startHangingVote() {
   });
 
   collector.on('collect', async (i) => {
-    // get player who voted
-    const player = game.players.find((p) => p.id === i.user.id);
-    // if player has already voted, return
-    if (player.hasVoted) return;
-    if (i.customId === 'yes' && i.user.id === votedPlayer.id) {
+    const votingPlayer = game.players.find((p) => p.id === i.user.id);
+
+    // Case for if player has already voted
+    if (votingPlayer.hasVoted) {
       await i.reply({
-        content: 'You cannot vote to hang yourself.',
+        content: 'You have already voted.',
         ephemeral: true,
       });
-    } else if (i.customId === 'yes') {
-      game.vote(player, votedPlayer);
+      return;
+    }
+
+    // Case for if voting player is dead
+    if (votingPlayer.isDead) {
       await i.reply({
-        content: `You have voted to hang ${votedPlayerUser}`,
+        content: 'Dead players cannot vote!',
         ephemeral: true,
       });
-    } else if (i.customId === 'no') {
+      return;
+    }
+
+    // Case for if voting player is the accused
+    if (votingPlayer.id === accusedPlayer.id) {
       await i.reply({
-        content: `You have voted against hanging ${votedPlayerUser}`,
+        content: 'The accused cannot vote!',
+        ephemeral: true,
+      });
+    }
+
+    if (i.customId === 'yes') {
+      game.vote(votingPlayer, accusedPlayer);
+      await i.reply({
+        content: `You have voted to hang ${accusedPlayerDiscord}`,
+        ephemeral: true,
+      });
+    } else {
+      await i.reply({
+        content: `You have voted against hanging ${accusedPlayerDiscord}`,
         ephemeral: true,
       });
     }
   });
 
   collector.on('end', async () => {
-    // determine if player should be hanged
-    const hangAccused = game.determineHanging();
-    // clear votes
     game.clearVotes();
-    game.players.forEach((p) => (p.voted = false));
-    // if there is a majority vote
+
+    const hangAccused = game.determineHanging();
+
     if (hangAccused) {
-      // kill player
-      votedPlayer.kill();
-      // get player's user object
-      const playerUser = await game.interaction.client.users.fetch(
-        votedPlayer.id,
+      accusedPlayer.kill();
+      await game.interaction.channel.send(
+        `${accusedPlayerDiscord} has been hanged.`,
       );
-      await game.interaction.channel.send(`${playerUser} has been hanged.`);
       // FIXME:
       // check if game is over
       // if (game.checkForWin()) {
@@ -337,23 +292,21 @@ async function startHangingVote() {
       // }
       await game.interaction.channel.send('Now proceeding to night time.');
       // clear the interval since we are proceeding to night
-      game.resetTimer();
       startNight();
     } else {
       // send message to channel saying there was no majority vote
       await game.interaction.channel.send(
-        'There was no majority vote.\nPlease continue to discuss and nominate players.',
+        `There was no majority vote.\nPlease continue to discuss and nominate players.\n${game.getTimeLeft()}.`,
       );
-      game.inNomination = true;
-      game.resumeTimer(startNight);
+      game.state = 'nomination';
     }
   });
 }
 
 /* ------------------------------- Night Start ------------------------------ */
 
-async function startNight() {
-  console.log('state of the game', game);
+function startNight() {
+  console.log('it is now night');
   return;
   // // set cycle to night
   // game.cycle = 'night';
@@ -426,6 +379,40 @@ async function startNight() {
   //   // start day
   //   startDay(killed);
   // }
+}
+
+async function assignRole(player, role, index) {
+  const nickname = game.interaction.guild.members.cache.get(
+    player.id,
+  ).displayName;
+
+  let newPlayer;
+
+  if (role === Mafia) {
+    newPlayer = new Mafia(nickname, player.id);
+    mafia.push(newPlayer);
+    mafiaInteractions.push(player.interaction);
+  } else if (role === Cop) {
+    newPlayer = new Cop(nickname, player.id);
+    cop = newPlayer;
+    copInteractions.push(player.interaction);
+  } else if (role === Medic) {
+    newPlayer = new Medic(nickname, player.id);
+    medic = newPlayer;
+    medicInteractions.push(player.interaction);
+  } else {
+    newPlayer = new Townie(nickname, player.id);
+    townies.push(newPlayer);
+  }
+
+  await player.interaction.followUp({
+    content: `${newPlayer.description}${
+      newPlayer.roleExplanation ? newPlayer.roleExplanation : ''
+    }`,
+    ephemeral: true,
+  });
+
+  game.players[index] = newPlayer;
 }
 
 module.exports = {

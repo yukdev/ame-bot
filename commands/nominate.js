@@ -2,10 +2,11 @@ const {
   SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
+  ButtonStyle,
   EmbedBuilder,
 } = require('discord.js');
 
-const { promptDefense, startNight } = require('../utils/gameLogic');
+const { promptDefense } = require('../utils/gameLogic');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,10 +21,7 @@ module.exports = {
 
   async execute(interaction) {
     const game = interaction.client.game;
-    // pause game timer
-    game.pauseDayTimer();
-
-    // no game in progress
+    // Case for when no game in progress
     if (!game?.inProgress) {
       await interaction.reply({
         content: 'There is no game in progress.',
@@ -32,12 +30,17 @@ module.exports = {
       return;
     }
 
-    const player = game.players.find((p) => p.id === interaction.user.id);
-    const playerDiscord = interaction.user;
-    const selected = interaction.options.getUser('selected');
+    // Case for when user not in game tries to nominate
+    if (!game.players.some((p) => p.id === interaction.user.id)) {
+      await interaction.reply({
+        content: 'You are not in this game!',
+        ephemeral: true,
+      });
+      return;
+    }
 
-    // game not in nomination phase
-    if (!game.inNomination) {
+    // Case for when game is not in nomination phase
+    if (game.state !== 'nomination') {
       await interaction.reply({
         content: 'You cannot nominate a player at this time.',
         ephemeral: true,
@@ -45,8 +48,17 @@ module.exports = {
       return;
     }
 
-    // player selected not in the game
-    if (!game.players.some((p) => p.id === selected.id)) {
+    const nominatingPlayerDiscord = interaction.user;
+    const nominatingPlayer = game.players.find(
+      (p) => p.id === nominatingPlayerDiscord.id,
+    );
+    const accusedPlayerDiscord = interaction.options.getUser('selected');
+    const accusedPlayer = game.players.find(
+      (p) => p.id === accusedPlayerDiscord.id,
+    );
+
+    // Case for when selected player is not in game
+    if (!game.players.some((p) => p.id === accusedPlayerDiscord.id)) {
       await interaction.reply({
         content: 'That player is not in this game.',
         ephemeral: true,
@@ -54,14 +66,32 @@ module.exports = {
       return;
     }
 
-    // no player selected
-    if (!selected) {
+    // Case for dead player trying to nominate
+    if (nominatingPlayer.dead) {
+      await interaction.reply({
+        content: 'Dead players cannot nominate!',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Case for nominating dead player
+    if (accusedPlayer.dead) {
+      await interaction.reply({
+        content: 'You cannot nominate a dead player!',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Case for when no player is selected
+    if (!accusedPlayerDiscord) {
       await interaction.reply('Please select a player to nominate.');
       return;
     }
 
-    // selecting yourself
-    if (selected.id === interaction.user.id) {
+    // Case for when player tries to nominate themselves
+    if (accusedPlayerDiscord.id === nominatingPlayer.id) {
       await interaction.reply({
         content: 'You cannot nominate yourself.',
         ephemeral: true,
@@ -69,8 +99,8 @@ module.exports = {
       return;
     }
 
-    // already nominated
-    if (player.nominated) {
+    // Case for when player tries to nominate again
+    if (nominatingPlayer.nominated) {
       await interaction.reply({
         content: 'You have already nominated a player.',
         ephemeral: true,
@@ -78,76 +108,108 @@ module.exports = {
       return;
     }
 
-    const selectedPlayer = game.players.find((p) => p.id === selected.id);
-    game.vote(player, selectedPlayer);
-
     const embed = new EmbedBuilder()
       .setColor('#0099ff')
-      .setTitle('Please decide if you would like to nominate this player')
+      .setTitle('Please decide if you wish to second this nomination.')
       .setDescription(
-        `${playerDiscord} has nominated ${selected} to be hanged.`,
+        `${nominatingPlayerDiscord} has nominated ${accusedPlayerDiscord} to be hanged.`,
       );
 
-    const row = new ActionRowBuilder().addComponents(
+    const nominateButton = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`nomination-${selected.id}`)
+        .setCustomId(`nomination-${accusedPlayerDiscord.id}`)
         .setLabel('Nominate')
-        .setStyle('Primary'),
+        .setStyle(ButtonStyle.Primary),
     );
 
-    // process nomination and ack interaction
-    player.nominated = true;
-    await interaction.reply({
-      content: `You have successfully nominated ${selected}`,
+    const rescindButton = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('rescind')
+        .setLabel('Rescind Nomination')
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    nominatingPlayer.nominated = true;
+
+    // send message to channel declaring nomination
+    await interaction.channel.send(
+      `${nominatingPlayerDiscord} has nominated ${accusedPlayerDiscord}.`,
+    );
+
+    // send embed w/ button
+    const nominationMessage = await interaction.reply({
+      embeds: [embed],
+      components: [nominateButton],
+      fetchReply: true,
+    });
+    game.nominationMessages.push(nominationMessage);
+
+    await interaction.followUp({
+      components: [rescindButton],
       ephemeral: true,
     });
 
-    // send embed w/ button
-    const message = await interaction.channel.send({
-      embeds: [embed],
-      components: [row],
-    });
+    const filter = (i) =>
+      i.customId === `nomination-${accusedPlayerDiscord.id}` ||
+      i.customId === 'rescind';
 
-    // Check if the button click is from the person who nominated or not
-    const filter = (i) => {
-      return i.customId === `nomination-${selected.id}`;
-    };
-
-    // Handle button click
     const collector = interaction.channel.createMessageComponentCollector({
       filter,
-      time: 30000,
     });
 
     collector.on('collect', async (i) => {
-      if (i.user.id === selected.id) {
-        await i.reply({
-          content: 'You cannot agree to nominate for yourself!',
-          ephemeral: true,
-        });
-      } else if (i.user.id === interaction.user.id) {
-        await i.reply({
-          content: 'You cannot vote for your own nomination!',
-          ephemeral: true,
-        });
-      } else {
-        // send message to channel saying who agreed
+      if (i.customId === 'rescind') {
         await interaction.channel.send(
-          `${i.user} has agreed to nominate ${selected}\nNow proceeding to ${selected}'s defense`,
+          `${nominatingPlayerDiscord} has rescinded their nomination for ${accusedPlayerDiscord}`,
         );
-        await message.delete();
-        collector.stop();
-        promptDefense();
-      }
-    });
+        await nominationMessage.delete();
+        await interaction.followUp({
+          content: 'Nomination rescinded.',
+          ephemeral: true,
+        });
+        nominatingPlayer.nominated = false;
+      } else if (i.customId === `nomination-${accusedPlayerDiscord.id}`) {
+        const agreeingPlayer = game.players.find((p) => p.id === i.user.id);
 
-    collector.on('end', async (collected) => {
-      // If no one agreed to nominate, send message to channel
-      if (collected.size === 0) {
-        await interaction.channel.send(`No one agreed to nominate ${selected}`);
-        await message.delete();
+        if (!agreeingPlayer) {
+          await i.editReply({
+            content: 'You are not in this game!',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        if (agreeingPlayer.dead) {
+          await i.editReply({
+            content: 'Dead players cannot nominate!',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        if (agreeingPlayer.id === accusedPlayerDiscord.id) {
+          await i.editReply({
+            content: 'You cannot agree to nominate for yourself!',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        if (agreeingPlayer.id === interaction.user.id) {
+          await i.editReply({
+            content: 'You cannot vote for your own nomination!',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        game.accused = accusedPlayer;
+        await interaction.channel.send(
+          `${i.user} has agreed to nominate ${accusedPlayerDiscord}\nNow proceeding to ${accusedPlayerDiscord}'s defense`,
+        );
         collector.stop();
-        game.resumeDayTimer();
+        game.nominationMessages.forEach(async (m) => await m.delete());
+        promptDefense();
       }
     });
   },

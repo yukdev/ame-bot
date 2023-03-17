@@ -1,8 +1,7 @@
 // Player class for game of Mafia
 class Player {
-  constructor(name, role, id) {
+  constructor(name, id) {
     this.name = name;
-    this.role = role;
     this.id = id;
     this.alive = true;
     this.nominated = false;
@@ -21,24 +20,27 @@ class Player {
 }
 
 class Mafia extends Player {
-  constructor(name, role, description) {
-    super(name, role, description);
+  constructor(name, id) {
+    super(name, id);
+    this.role = 'mafia';
     this.description =
       '\nYou are a member of the mafia.\nYou win when all townies are dead.\nEvery night, you can discuss with your fellow mafia to choose someone to kill.';
   }
 }
 
 class Townie extends Player {
-  constructor(name, role, description) {
-    super(name, role, description);
+  constructor(name, id) {
+    super(name, id);
+    this.role = 'townie';
     this.description =
       '\nYou are a townie.\nYou win when all mafia are dead.\nPlease work together with your fellow townies to find and kill all mafia.';
   }
 }
 
 class Cop extends Townie {
-  constructor(name, role, description) {
-    super(name, role, description);
+  constructor(name, id) {
+    super(name, id);
+    this.role = 'cop';
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to investigate a player to see if they are a member of the mafia.`;
     this.checkedPlayer = null;
   }
@@ -46,7 +48,7 @@ class Cop extends Townie {
   // actions
   investigate(player) {
     this.checkedPlayer = player.name;
-    return player.role === 'mafia' ? 'mafia' : 'a townie';
+    return player.role === 'mafia' ? 'mafia' : 'townie';
   }
 
   reset() {
@@ -55,8 +57,9 @@ class Cop extends Townie {
 }
 
 class Medic extends Townie {
-  constructor(name, role, description) {
-    super(name, role, description);
+  constructor(name, id) {
+    super(name, id);
+    this.role = 'medic';
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to protect a player from being killed.\nYou cannot protect yourself nor can you protect the same person twice in a row.`;
     this.protectedPlayer = null;
   }
@@ -72,8 +75,8 @@ class Medic extends Townie {
 }
 
 // class Vigilante extends Townie {
-//   constructor(name, role, description) {
-//     super(name, role, description);
+//   constructor(name, id) {
+//     super(name, id);
 //     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nYou have the ability to kill a player only once at night.`;
 //   }
 // }
