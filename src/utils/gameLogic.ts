@@ -1,12 +1,7 @@
-const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require('discord.js');
-const { Game } = require('../models/game');
-const { Mafia, Townie, Cop, Medic } = require('../models/player');
-const {
-  shuffle,
-  getNumberOfMafia,
-  endGame,
-  createPrivateThread,
-} = require('../utils/helperFunctions');
+import { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
+import { Mafia, Townie, Cop, Medic } from '../models/player';
+import { games } from '../shared/globals';
+import { shuffle, getNumberOfMafia, endGame, createPrivateThread } from '../utils/helperFunctions';
 
 let game;
 
@@ -24,14 +19,10 @@ let medicThread;
 /* ------------------------------- Game Start ------------------------------- */
 
 async function startGame(interaction, players) {
-  // check if game is already in progress
-  if (interaction.client.game) {
-    await interaction.channel.send('A game is already in progress!');
-    return;
-  }
+  const { channelId, guildId } = interaction;
+  const gameId = `${channelId}-${guildId}`;
+  game = games[gameId];
 
-  // create new game
-  game = new Game(interaction);
   // add players to game
   players.forEach((user) => {
     game.addPlayer(user);

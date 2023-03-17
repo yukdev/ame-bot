@@ -1,7 +1,10 @@
-const { ChannelType } = require('discord.js');
+import { ChannelType } from 'discord.js';
+import type { Player } from '../models/player';
+import type { Game } from '../models/game';
+
 
 // shuffle an array
-function shuffle(array) {
+function shuffle(array: any[]) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
@@ -9,12 +12,12 @@ function shuffle(array) {
 }
 
 // get role for a player
-function getRole(player) {
+function getRole(player: Player) {
   return player.role;
 }
 
 // determine how many of each role based on number of players
-function getNumberOfMafia(numPlayers) {
+function getNumberOfMafia(numPlayers: number) {
   switch (numPlayers) {
     // if 4-5 players: 1 mafia
     case 4 || 5:
@@ -30,13 +33,16 @@ function getNumberOfMafia(numPlayers) {
   }
 }
 
-function endGame(winner, game) {
-  if (winner === 'mafia') {
-    game.interaction.channel.send('The mafia has won!');
-  } else if (winner === 'townies') {
-    game.interaction.channel.send('The townies have won!');
+function endGame(winner: string, game: Game) {
+  const gameChannel = game.interaction.channel;
+
+  if (gameChannel) {
+    if (winner === 'mafia') {
+      gameChannel.send('The mafia has won!');
+    } else {
+      gameChannel.send('The townies have won!');
+    }
   }
-  game = null;
 }
 
 async function createPrivateThread(name, interactions, topic, game) {

@@ -1,12 +1,21 @@
 // Player class for game of Mafia
-class Player {
-  constructor(name, id) {
+export class Player {
+  name: string;
+  id: string;
+  alive: boolean;
+  nominated: boolean;
+  voted: boolean;
+  protected: boolean;
+  role: string;
+
+  constructor(name: string, id: string) {
     this.name = name;
     this.id = id;
     this.alive = true;
     this.nominated = false;
     this.voted = false;
     this.protected = false;
+    this.role = '';
   }
 
   // kill this player
@@ -19,8 +28,10 @@ class Player {
   }
 }
 
-class Mafia extends Player {
-  constructor(name, id) {
+export class Mafia extends Player {
+  description: string;
+
+  constructor(name: string, id: string) {
     super(name, id);
     this.role = 'mafia';
     this.description =
@@ -28,8 +39,10 @@ class Mafia extends Player {
   }
 }
 
-class Townie extends Player {
-  constructor(name, id) {
+export class Townie extends Player {
+  description: string;
+
+  constructor(name: string, id: string) {
     super(name, id);
     this.role = 'townie';
     this.description =
@@ -37,8 +50,11 @@ class Townie extends Player {
   }
 }
 
-class Cop extends Townie {
-  constructor(name, id) {
+export class Cop extends Townie {
+  checkedPlayer: string | null;
+  roleExplanation: string;
+
+  constructor(name: string, id: string) {
     super(name, id);
     this.role = 'cop';
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to investigate a player to see if they are a member of the mafia.`;
@@ -46,9 +62,9 @@ class Cop extends Townie {
   }
 
   // actions
-  investigate(player) {
+  investigate(player: Player) {
     this.checkedPlayer = player.name;
-    return player.role === 'mafia' ? 'mafia' : 'townie';
+    return player instanceof Mafia ? 'mafia' : 'townie';
   }
 
   reset() {
@@ -56,15 +72,18 @@ class Cop extends Townie {
   }
 }
 
-class Medic extends Townie {
-  constructor(name, id) {
+export class Medic extends Townie {
+  protectedPlayer: string | null;
+  roleExplanation: string;
+
+  constructor(name: string, id: string) {
     super(name, id);
     this.role = 'medic';
     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nEvery night, you have the ability to protect a player from being killed.\nYou cannot protect yourself nor can you protect the same person twice in a row.`;
     this.protectedPlayer = null;
   }
 
-  protect(player) {
+  protect(player: Player) {
     player.protected = true;
     this.protectedPlayer = player.name;
   }
@@ -74,18 +93,11 @@ class Medic extends Townie {
   }
 }
 
-// class Vigilante extends Townie {
-//   constructor(name, id) {
+// export class Vigilante extends Townie {
+//   roleExplanation: string;
+
+//   constructor(name: string, id: string) {
 //     super(name, id);
 //     this.roleExplanation = `\nIn addition to being a townie, you are a **${this.role}**.\nYou have the ability to kill a player only once at night.`;
 //   }
 // }
-
-module.exports = {
-  Player,
-  Mafia,
-  Townie,
-  Cop,
-  Medic,
-  // Vigilante,
-};

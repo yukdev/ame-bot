@@ -1,20 +1,39 @@
+import type { ChatInputCommandInteraction, Message } from 'discord.js';
+import type { Player } from './player';
+import { Cop, Medic } from './player';
+
 /**
  * Mafia Game Class
  */
 export class Game {
-  constructor(interaction) {
+  id: string;
+  interaction: ChatInputCommandInteraction;
+  players: Player[];
+  votes: Record<string, number>;
+  accused: Player | null;
+  inProgress: boolean;
+  state: 'setup' | 'nomination' | 'defense' | 'hanging';
+  nominationMessages: Message[];
+  day: number;
+  cycle: 'day' | 'night';
+  dayTime: number;
+  dayOver: boolean;
+  timerIntervalId: NodeJS.Timeout | string | number | undefined;
+
+  constructor(interaction: ChatInputCommandInteraction, id: string) {
+    this.id = id;
     this.interaction = interaction;
     this.players = [];
     this.votes = {};
     this.accused = null;
     this.inProgress = false;
-    this.state = 'setup';
+    this.state = 'setup'
     this.nominationMessages = [];
     this.day = 0;
     this.cycle = 'day';
     this.dayTime = 300;
     this.dayOver = false;
-    this.timerIntervalId = null;
+    this.timerIntervalId;
   }
 
   checkForWin() {
@@ -38,14 +57,16 @@ export class Game {
     return;
   }
 
-  addPlayer(player) {
+  addPlayer(player: Player) {
     this.players.push(player);
   }
 
-  vote(voter, target) {
-    this.votes[target.name] = this.votes[target.name]
-      ? this.votes[target.name] + 1
-      : 1;
+  vote(voter: Player, target: Player) {
+    if (this.votes[target.name]) {
+      this.votes[target.name] += 1;
+    } else {
+      this.votes[target.name] = 1;
+    }
     voter.voted = true;
   }
 
@@ -71,9 +92,12 @@ export class Game {
       if (this.dayTime <= 0) {
         clearInterval(this.timerIntervalId);
         if (this.state !== 'defense' && this.state !== 'hanging') {
-          await this.interaction.channel.send(
-            '**Time is up!** It is now night time.',
-          );
+          // not sure if this is correct
+          if (this.interaction.channel) {
+            await this.interaction.channel.send(
+              '**Time is up!** It is now night time.',
+            );
+          }
           // delete all nomination messages
           this.nominationMessages.forEach(async (m) => await m.delete());
           callback();
@@ -130,11 +154,11 @@ export class Game {
     this.day += 1;
     this.cycle = 'day';
     this.dayTime = 300;
-    this.timerIntervalId = null;
+    this.timerIntervalId = undefined;
     this.clearVotes();
     this.players.forEach((p) => {
       if (p.alive) {
-        if (p.role === 'cop' || p.role === 'medic') {
+        if (p instanceof Cop || p instanceof Medic) {
           p.reset();
         }
         if (p.protected) {

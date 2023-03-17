@@ -1,3 +1,6 @@
+import { games } from '../../shared/globals';
+import { Game } from '../../models/game';
+
 const MINIMUM_PLAYER_COUNT = 4;
 
 interface Player {
@@ -9,7 +12,7 @@ interface Player {
 let players: Player[] = [];
 let setupInProgress = false;
 
-import { startGame } from '../utils/gameLogic';
+import { startGame } from '../../utils/gameLogic';
 
 import {
   ActionRowBuilder,
@@ -21,6 +24,8 @@ import {
 } from 'discord.js';
 
 export const mafiaResponse = async (interaction: ChatInputCommandInteraction) => {
+  const [channelId, guildId] = [interaction.channelId, interaction.guildId];
+
   if (setupInProgress) {
      await interaction.reply({
       content: 'A game is already being set up.',
@@ -134,7 +139,15 @@ export const mafiaResponse = async (interaction: ChatInputCommandInteraction) =>
           content: 'Starting the game with ' + players.length + ' players!',
           ephemeral: true,
         });
-        startGame(interaction, players);
+
+        const gameId = `${channelId}-${guildId}`;
+        if (games[gameId]) {
+          // game is already in progress
+        } else {
+          const game = new Game(interaction, gameId);
+          games[gameId] = game;
+          startGame();
+        }
 
         const reply = await interaction.fetchReply();
         await reply.delete();
