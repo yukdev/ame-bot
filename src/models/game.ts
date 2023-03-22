@@ -1,4 +1,10 @@
-import type { ChatInputCommandInteraction, Message } from 'discord.js';
+import type {
+	ChatInputCommandInteraction,
+	Message,
+	TextBasedChannel,
+	Guild,
+} from 'discord.js';
+
 import type { Player } from './player';
 import { Cop, Medic } from './player';
 
@@ -8,6 +14,8 @@ import { Cop, Medic } from './player';
 export class Game {
 	id: string;
 	interaction: ChatInputCommandInteraction;
+	channel: TextBasedChannel;
+	guild: Guild;
 	players: Player[];
 	votes: Record<string, number>;
 	accused: Player | null;
@@ -19,10 +27,19 @@ export class Game {
 	dayTime: number;
 	dayOver: boolean;
 	timerIntervalId: NodeJS.Timeout | string | number | undefined;
+	winner: 'mafia' | 'townies' | null;
 
 	constructor(interaction: ChatInputCommandInteraction, id: string) {
 		this.id = id;
 		this.interaction = interaction;
+		if (!interaction.channel) {
+			throw new Error('Channel is null');
+		}
+		this.channel = interaction.channel;
+		if (!interaction.guild) {
+			throw new Error('Guild is null');
+		}
+		this.guild = interaction.guild;
 		this.players = [];
 		this.votes = {};
 		this.accused = null;
@@ -33,28 +50,29 @@ export class Game {
 		this.cycle = 'day';
 		this.dayTime = 300;
 		this.dayOver = false;
-		this.timerIntervalId;
+		this.timerIntervalId = undefined;
+		this.winner = null;
 	}
 
-	checkForWin() {
+	checkForWin(): boolean {
 		const allTowniesDead = this.players
 			.filter((p) => p.role === 'townie')
-			.every((p) => p.alive === false);
+			.every((p) => p.isAlive === false);
 		const allMafiaDead = this.players
 			.filter((p) => p.role === 'mafia')
-			.every((p) => p.alive === false);
+			.every((p) => p.isAlive === false);
 		const mafiaIsMajority =
 			this.players.filter((p) => p.role === 'mafia').length >=
 			this.players.length / 2;
 
 		if (allTowniesDead || mafiaIsMajority) {
-			return 'mafia';
+			this.winner = 'mafia';
 		}
 		if (allMafiaDead) {
-			return 'townies';
+			this.winner = 'townies';
 		}
 
-		return;
+		return this.winner !== null;
 	}
 
 	addPlayer(player: Player) {
@@ -67,7 +85,7 @@ export class Game {
 		} else {
 			this.votes[target.name] = 1;
 		}
-		voter.voted = true;
+		voter.hasVoted = true;
 	}
 
 	determineHanging() {
@@ -81,11 +99,11 @@ export class Game {
 
 	clearVotes() {
 		this.votes = {};
-		this.players.forEach((p) => (p.voted = false));
+		this.players.forEach((p) => (p.hasVoted = false));
 		this.accused = null;
 	}
 
-	startDayTimer(callback) {
+	startDayTimer(callback: () => void) {
 		this.timerIntervalId = setInterval(async () => {
 			this.dayTime -= 1;
 			console.log('startTimer: ', this.dayTime);
@@ -159,15 +177,15 @@ export class Game {
 		this.timerIntervalId = undefined;
 		this.clearVotes();
 		this.players.forEach((p) => {
-			if (p.alive) {
+			if (p.isAlive) {
 				if (p instanceof Cop || p instanceof Medic) {
 					p.reset();
 				}
-				if (p.protected) {
+				if (p.isProtected) {
 					p.removeProtection();
 				}
 			}
-			p.voted = false;
+			p.hasVoted = false;
 		});
 	}
 }

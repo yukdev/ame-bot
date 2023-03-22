@@ -1,48 +1,42 @@
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
+	ButtonStyle,
 	EmbedBuilder,
 	ChatInputCommandInteraction,
 	ButtonInteraction,
 } from 'discord.js';
+import type { User } from 'discord.js';
 import type { DiscordPlayer } from '../commands/mafia-command/mafia-response';
 import type { Game } from '../models/game';
 import type { Player } from '../models/player';
 import { Mafia, Townie, Cop, Medic } from '../models/player';
-import { games } from '../shared/globals';
 import {
 	shuffle,
 	getNumberOfMafia,
 	endGame,
 	createPrivateThread,
+	getDiscordUserFromId,
 } from '../utils/helperFunctions';
 
 type interaction = ChatInputCommandInteraction | ButtonInteraction;
+type Role = typeof Mafia | typeof Townie | typeof Cop | typeof Medic;
 
-let game: Game | undefined;
 const displayPlayers: DiscordPlayer[] = [];
-
 const mafia: Player[] = [];
 const townies: Player[] = [];
-let cop: Player | undefined;
-let medic: Player | undefined;
+// let cop: Player | undefined;
+// let medic: Player | undefined;
 const mafiaInteractions: interaction[] = [];
 const copInteractions: interaction[] = [];
 const medicInteractions: interaction[] = [];
-let mafiaThread;
-let copThread;
-let medicThread;
+// let mafiaThread;
+// let copThread;
+// let medicThread;
 
 /* ------------------------------- Game Start ------------------------------- */
 
-async function startGame(
-	interaction: ChatInputCommandInteraction,
-	players: DiscordPlayer[],
-) {
-	const { channelId, guildId } = interaction;
-	const gameId = `${channelId}-${guildId}`;
-	game = games[gameId];
-
+export async function startGame(game: Game, players: DiscordPlayer[]) {
 	// add players to game
 	players.forEach((user) => {
 		displayPlayers.push(user);
@@ -52,37 +46,42 @@ async function startGame(
 	game.inProgress = true;
 
 	// send message to channel
-	await interaction.channel.send(
+	await game.channel.send(
 		'**The game has started.**\nRead your ping carefully for your role and/or powers.',
 	);
 
-	setupGame();
+	setupGame(game, players);
 }
 
-async function setupGame() {
+async function setupGame(game: Game, players: DiscordPlayer[]) {
 	// shuffle players
-	shuffle(game.players);
+	shuffle(players);
 	// FIXME: make game more fair to mafia later
-	const mafiaCount = getNumberOfMafia(game.players.length);
+	const mafiaCount = getNumberOfMafia(players.length);
 
-	for (let i = 0; i < game.players.length; i++) {
-		const player = game.players[i];
+	for (let i = 0; i < players.length; i++) {
+		const player = players[i];
 
 		if (i < mafiaCount) {
-			await assignRole(player, Mafia, i);
+			await assignRole(player!, Mafia, i, game);
 		} else if (i === game.players.length - 1) {
-			await assignRole(player, Medic, i);
+			await assignRole(player!, Medic, i, game);
 		} else if (i === game.players.length - 2) {
-			await assignRole(player, Cop, i);
+			await assignRole(player!, Cop, i, game);
 		} else {
-			await assignRole(player, Townie, i);
+			await assignRole(player!, Townie, i, game);
 		}
 	}
 
 	// send an ephemeral reply to each mafia member telling them who their fellow mafia mates are
-	const mafiaMatesUsers = mafia.map((p) =>
-		game.interaction.client.users.cache.get(p.id),
-	);
+	const mafiaMatesUsers: User[] = [];
+	mafia.forEach((p) => {
+		const discordUser = getDiscordUserFromId(p.id, game);
+		if (discordUser) {
+			mafiaMatesUsers.push(discordUser);
+		}
+	});
+
 	mafiaInteractions.forEach(async (interaction) => {
 		await interaction.followUp({
 			content:
@@ -98,7 +97,7 @@ async function setupGame() {
 
 	// create a new private thread for the mafia players
 	const mafiaThreadTopic = 'Private thread for the Mafia';
-	mafiaThread = await createPrivateThread(
+	await createPrivateThread(
 		'Mafia Private Thread',
 		mafiaInteractions,
 		mafiaThreadTopic,
@@ -107,7 +106,7 @@ async function setupGame() {
 
 	// create a new private thread for the cop
 	const copThreadTopic = 'Private thread for the Cop.';
-	copThread = await createPrivateThread(
+	await createPrivateThread(
 		'Cop Private Thread',
 		copInteractions,
 		copThreadTopic,
@@ -116,7 +115,7 @@ async function setupGame() {
 
 	// create a new private thread for the medic
 	const medicThreadTopic = 'Private thread for the Medic.';
-	medicThread = await createPrivateThread(
+	await createPrivateThread(
 		'Medic Private Thread',
 		medicInteractions,
 		medicThreadTopic,
@@ -124,13 +123,13 @@ async function setupGame() {
 	);
 
 	setTimeout(() => {
-		startDay();
+		startDay(game, []);
 	}, 1000 * 1);
 }
 
 /* -------------------------------- Day Start ------------------------------- */
 
-function startDay(killed) {
+async function startDay(game: Game, killed: Player[]) {
 	// increment day
 	// set time to day
 	// reset day timer
@@ -138,38 +137,22 @@ function startDay(killed) {
 	game.setupNewDay();
 	// check if game is over
 	if (game.checkForWin()) {
-		endGame(game.checkForWin(), game);
+		endGame(game.winner!, game);
 	}
 
 	// declare it is day
-	game.interaction.channel.send(`It is now day ${game.day}.`);
+	await game.channel.send(`It is now day ${game.day}.`);
 
 	// if there were kill(s) last night, send message to channel
-	// this probably needs a refactor
-	if (killed) {
+	// TODO: refactor this later to mention the killed users
+	if (killed && killed.length > 0) {
 		const numKilled = killed.length;
-		const killedPlayers = killed.map((player) =>
-			game.interaction.client.users.cache.get(player.id).toString(),
-		);
 
-		const killReport =
-			numKilled === 0
-				? 'No one was killed last night.'
-				: numKilled === 1
-				? `${numKilled} player was killed last night: ${killedPlayers[0].toString()}`
-				: numKilled === 2
-				? `${numKilled} players were killed last night: ${killedPlayers[0].toString()} and ${killedPlayers[1].toString()}`
-				: `${numKilled} players were killed last night: ${killedPlayers
-						.slice(0, -1)
-						.join(', ')}, and ${killedPlayers
-						.slice(-1)[0]
-						.toString()}.`;
-
-		game.interaction.channel.send(killReport);
+		await game.channel.send(`There were ${numKilled} kill(s) last night.`);
 	}
 
 	// tell players to discuss
-	game.interaction.channel.send(
+	await game.channel.send(
 		'You have 5 minutes to discuss who you think is suspicious.\nYou can nominate a player to make a defense with /nominate',
 	);
 
@@ -178,13 +161,13 @@ function startDay(killed) {
 	game.startDayTimer(startNight);
 }
 
-async function promptDefense() {
+export async function promptDefense(game: Game) {
 	game.state = 'defense';
 
-	game.interaction.channel.send('You have 2 minutes to make your defense.');
+	await game.channel.send('You have 2 minutes to make your defense.');
 
 	setTimeout(() => {
-		startHangingVote();
+		startHangingVote(game);
 	}, 1000 * 5);
 
 	// setTimeout(() => {
@@ -192,35 +175,33 @@ async function promptDefense() {
 	// }, 1000 * 60 * 2);
 }
 
-async function startHangingVote() {
+async function startHangingVote(game: Game) {
 	// set game to hanging phase
 	game.state = 'hanging';
 
 	// get voted player
-	const accusedPlayer = game.accused;
-	const accusedPlayerDiscord = await game.interaction.client.users.fetch(
-		accusedPlayer.id,
-	);
+	const accusedPlayer = game.accused!;
+	const accusedPlayerDiscord = getDiscordUserFromId(accusedPlayer.id, game);
 
 	// clear votes
 	game.clearVotes();
 
-	await game.interaction.channel.send(
+	await game.channel.send(
 		`Please vote if you would like to hang ${accusedPlayerDiscord}`,
 	);
 
-	const yesButton = new ButtonBuilder()
-		.setCustomId('yes')
-		.setLabel('Yes')
-		.setStyle('Success');
-	const noButton = new ButtonBuilder()
-		.setCustomId('no')
-		.setLabel('No')
-		.setStyle('Danger');
+	const yesNoButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+		new ButtonBuilder()
+			.setCustomId('yes')
+			.setLabel('Yes')
+			.setStyle(ButtonStyle.Success),
+		new ButtonBuilder()
+			.setCustomId('no')
+			.setLabel('No')
+			.setStyle(ButtonStyle.Danger),
+	);
 
-	const buttons = new ActionRowBuilder().addComponents([yesButton, noButton]);
-
-	const embed = new EmbedBuilder()
+	const yesNoEmbed = new EmbedBuilder()
 		.setTitle(
 			'You have 15 seconds to vote.\nIf you do not vote, you will be considered abstaining.',
 		)
@@ -228,12 +209,14 @@ async function startHangingVote() {
 			`Please vote if you would like to hang ${accusedPlayerDiscord}`,
 		);
 
-	const message = await game.interaction.channel.send({
-		embeds: [embed],
-		components: [buttons],
+	const message = await game.channel.send({
+		embeds: [yesNoEmbed],
+		components: [yesNoButtonRow],
 	});
 
-	const filter = (i) => i.customId === 'yes' || i.customId === 'no';
+	// TODO: is this type correct for i?
+	const filter = (i: { customId: string }) =>
+		i.customId === 'yes' || i.customId === 'no';
 
 	// 15 seconds to vote
 	const collector = message.createMessageComponentCollector({
@@ -245,6 +228,14 @@ async function startHangingVote() {
 	collector.on('collect', async (i) => {
 		const votingPlayer = game.players.find((p) => p.id === i.user.id);
 
+		if (!votingPlayer) {
+			await i.reply({
+				content: 'You are not in the game.',
+				ephemeral: true,
+			});
+			return;
+		}
+
 		// Case for if player has already voted
 		if (votingPlayer.hasVoted) {
 			await i.reply({
@@ -255,7 +246,7 @@ async function startHangingVote() {
 		}
 
 		// Case for if voting player is dead
-		if (votingPlayer.isDead) {
+		if (!votingPlayer.isAlive) {
 			await i.reply({
 				content: 'Dead players cannot vote!',
 				ephemeral: true,
@@ -292,22 +283,18 @@ async function startHangingVote() {
 
 		if (hangAccused) {
 			accusedPlayer.kill();
-			await game.interaction.channel.send(
-				`${accusedPlayerDiscord} has been hanged.`,
-			);
+			await game.channel.send(`${accusedPlayerDiscord} has been hanged.`);
 			// FIXME:
 			// check if game is over
 			// if (game.checkForWin()) {
 			//   endGame(game.checkForWin());
 			// }
-			await game.interaction.channel.send(
-				'Now proceeding to night time.',
-			);
+			await game.channel.send('Now proceeding to night time.');
 			// clear the interval since we are proceeding to night
 			startNight();
 		} else {
 			// send message to channel saying there was no majority vote
-			await game.interaction.channel.send(
+			await game.channel.send(
 				`There was no majority vote.\nPlease continue to discuss and nominate players.\n${game.getTimeLeft()}.`,
 			);
 			game.state = 'nomination';
@@ -393,34 +380,42 @@ function startNight() {
 	// }
 }
 
-async function assignRole(player, role, index) {
-	const nickname = game.interaction.guild.members.cache.get(
-		player.id,
-	).displayName;
+async function assignRole(
+	player: DiscordPlayer,
+	role: Role,
+	index: number,
+	game: Game,
+) {
+	// TODO: check if this works later
+	const nickname = game.guild.members.cache.get(player.id)!.nickname;
 
-	let newPlayer;
+	let newPlayer: Mafia | Cop | Medic | Townie | undefined;
 
 	if (role === Mafia) {
-		newPlayer = new Mafia(nickname, player.id);
+		newPlayer = new Mafia(nickname!, player.id);
 		mafia.push(newPlayer);
 		mafiaInteractions.push(player.interaction);
 	} else if (role === Cop) {
-		newPlayer = new Cop(nickname, player.id);
-		cop = newPlayer;
+		newPlayer = new Cop(nickname!, player.id);
+		// cop = newPlayer;
 		copInteractions.push(player.interaction);
 	} else if (role === Medic) {
-		newPlayer = new Medic(nickname, player.id);
-		medic = newPlayer;
+		newPlayer = new Medic(nickname!, player.id);
+		// medic = newPlayer;
 		medicInteractions.push(player.interaction);
 	} else {
-		newPlayer = new Townie(nickname, player.id);
+		newPlayer = new Townie(nickname!, player.id);
 		townies.push(newPlayer);
 	}
 
+	let description = newPlayer.description;
+
+	if (newPlayer instanceof Cop || newPlayer instanceof Medic) {
+		description += newPlayer.roleExplanation;
+	}
+
 	await player.interaction.followUp({
-		content: `${newPlayer.description}${
-			newPlayer.roleExplanation ? newPlayer.roleExplanation : ''
-		}`,
+		content: description,
 		ephemeral: true,
 	});
 

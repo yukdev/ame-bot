@@ -20,8 +20,8 @@
 		"**/.pnp.*": true
 	},
 	"jestrunner.configPath": "jest.config.cjs",
-	"jestrunner.jestCommand": "yarn test",
-	"jest.jestCommandLine": "yarn test",
+	"jestrunner.jestCommand": "node --experimental-vm-modules $(yarn bin jest)",
+	"jest.jestCommandLine": "node --experimental-vm-modules $(yarn bin jest)",
 	"[typescript]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	}

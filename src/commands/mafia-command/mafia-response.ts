@@ -84,7 +84,8 @@ export const mafiaResponse = async (
 		ephemeral: true,
 	});
 
-	const filter = (i) =>
+	// is this type correct for i?
+	const filter = (i: { customId: string }) =>
 		i.customId === 'join' ||
 		i.customId === 'start' ||
 		i.customId === 'cancel' ||
@@ -153,7 +154,7 @@ export const mafiaResponse = async (
 				} else {
 					const game = new Game(interaction, gameId);
 					games[gameId] = game;
-					startGame();
+					startGame(game, players);
 				}
 
 				const reply = await interaction.fetchReply();
