@@ -421,11 +421,3 @@ async function assignRole(
 
 	game.players[index] = newPlayer;
 }
-
-module.exports = {
-	startGame,
-	setupGame,
-	startDay,
-	startNight,
-	promptDefense,
-};

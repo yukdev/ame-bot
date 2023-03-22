@@ -10,7 +10,7 @@ import {
 
 import { promptDefense } from '../../utils/gameLogic';
 
-export const mafiaResponse = async (
+export const nominateResponse = async (
 	interaction: ChatInputCommandInteraction,
 ) => {
 	const channel = interaction.channel;

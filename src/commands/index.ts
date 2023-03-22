@@ -1,9 +1,8 @@
-import {
-	Client,
-	Events,
-} from 'discord.js';
+import { Client, Events } from 'discord.js';
 import { timeResponse } from './time-command/time-response';
 import { pingResponse } from './ping-command/ping-response';
+import { mafiaResponse } from './mafia-command/mafia-response';
+import { nominateResponse } from './nominate-command/nominate-response';
 
 export function setUpResponses(client: Client) {
 	console.log('Setting up responses');
@@ -19,6 +18,12 @@ export function setUpResponses(client: Client) {
 				break;
 			case 'ping':
 				await pingResponse(interaction).catch(console.error);
+				break;
+			case 'mafia':
+				await mafiaResponse(interaction).catch(console.error);
+				break;
+			case 'nominate':
+				await nominateResponse(interaction).catch(console.error);
 				break;
 			default:
 				console.error(`Could not find ${commandName}`);

@@ -3,9 +3,11 @@ import { timeCommand } from '../commands/time-command/time-command';
 import { pingCommand } from '../commands/ping-command/ping-command';
 import { mafiaCommand } from '../commands/mafia-command/mafia-command';
 import { nominateCommand } from '../commands/nominate-command/nominate-command';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 const token = process.env['DISCORD_TOKEN'];
-const clientId = process.env['DISCORD_CLIENT_ID'];
+const clientId = process.env['CLIENT_ID'];
 
 if (token === undefined || clientId === undefined) {
 	throw new Error(
