@@ -1,7 +1,7 @@
 {
 	"extends": "@tsconfig/node16-strictest-esm/tsconfig.json",
 	"compilerOptions": {
-		"noImplicitAny": false, // TODO: Change this to true (114 errors)
+		"noImplicitAny": true,
 		"target": "esnext",
 		"module": "esnext",
 		"allowJs": true,

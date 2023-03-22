@@ -1,6 +1,20 @@
-import { ChannelType } from 'discord.js';
+import { ThreadChannel, TextChannel, ChannelType } from 'discord.js';
+import type {
+	GuildTextThreadCreateOptions,
+	AllowedThreadTypeForTextChannel,
+} from 'discord.js';
 import type { Player } from '../models/player';
 import type { Game } from '../models/game';
+import type {
+	mafiaInteractions,
+	copInteractions,
+	medicInteractions,
+} from './gameLogic';
+
+type userInteraction =
+	| typeof mafiaInteractions
+	| typeof copInteractions
+	| typeof medicInteractions;
 
 // get discord user from id
 export function getDiscordUserFromId(id: string, game: Game) {
@@ -49,29 +63,33 @@ export function endGame(winner: string, game: Game) {
 	}
 }
 
-export async function createPrivateThread(name, interactions, topic, game) {
-	const options = {
-		autoArchiveDuration: 60,
-		name,
-		reason: 'Private thread for Mafia game discussion',
-		type: ChannelType.PrivateThread,
-		invitable: true,
-		parent: game.interaction.channel.parent,
-		topic,
-	};
-	const thread = await game.interaction.channel.threads.create(options);
+export async function createPrivateThread(
+	name: string,
+	interactions: userInteraction,
+	channel: TextChannel,
+): Promise<ThreadChannel> {
+	const options: GuildTextThreadCreateOptions<AllowedThreadTypeForTextChannel> =
+		{
+			name,
+			autoArchiveDuration: 60,
+			reason: 'Private thread for Mafia game discussion',
+			type: ChannelType.PrivateThread,
+			invitable: true,
+		};
+
+	const thread = await channel.threads.create(options);
 
 	// lock the thread initially
 	await thread.setLocked(true);
 
 	// invite the members to the thread
 	await Promise.all(
-		interactions.map(async (member) => {
+		interactions.map(async (interaction) => {
 			try {
-				await thread.members.add(member.user);
+				await thread.members.add(interaction.user);
 			} catch (err) {
 				console.error(
-					`Failed to add member ${member.member.nickname} to the thread: ${err}`,
+					`Failed to add member ${interaction.user} to the thread: ${err}`,
 				);
 			}
 		}),

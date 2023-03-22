@@ -6,7 +6,7 @@ import {
 	ChatInputCommandInteraction,
 	ButtonInteraction,
 } from 'discord.js';
-import type { User } from 'discord.js';
+import type { User, TextChannel } from 'discord.js';
 import type { DiscordPlayer } from '../commands/mafia-command/mafia-response';
 import type { Game } from '../models/game';
 import type { Player } from '../models/player';
@@ -20,16 +20,15 @@ import {
 } from '../utils/helperFunctions';
 
 type interaction = ChatInputCommandInteraction | ButtonInteraction;
-type Role = typeof Mafia | typeof Townie | typeof Cop | typeof Medic;
 
-const displayPlayers: DiscordPlayer[] = [];
+const discordPlayers: DiscordPlayer[] = [];
 const mafia: Player[] = [];
 const townies: Player[] = [];
 // let cop: Player | undefined;
 // let medic: Player | undefined;
-const mafiaInteractions: interaction[] = [];
-const copInteractions: interaction[] = [];
-const medicInteractions: interaction[] = [];
+export const mafiaInteractions: interaction[] = [];
+export const copInteractions: interaction[] = [];
+export const medicInteractions: interaction[] = [];
 // let mafiaThread;
 // let copThread;
 // let medicThread;
@@ -39,7 +38,7 @@ const medicInteractions: interaction[] = [];
 export async function startGame(game: Game, players: DiscordPlayer[]) {
 	// add players to game
 	players.forEach((user) => {
-		displayPlayers.push(user);
+		discordPlayers.push(user);
 	});
 
 	// set game to start
@@ -62,14 +61,19 @@ async function setupGame(game: Game, players: DiscordPlayer[]) {
 	for (let i = 0; i < players.length; i++) {
 		const player = players[i];
 
+		// FIXME: not sure why this is needed
+		if (!player) {
+			continue;
+		}
+
 		if (i < mafiaCount) {
-			await assignRole(player!, Mafia, i, game);
-		} else if (i === game.players.length - 1) {
-			await assignRole(player!, Medic, i, game);
-		} else if (i === game.players.length - 2) {
-			await assignRole(player!, Cop, i, game);
+			await assignRole(player, 'mafia', i, game);
+		} else if (i === players.length - 1) {
+			await assignRole(player, 'medic', i, game);
+		} else if (i === players.length - 2) {
+			await assignRole(player, 'cop', i, game);
 		} else {
-			await assignRole(player!, Townie, i, game);
+			await assignRole(player, 'townie', i, game);
 		}
 	}
 
@@ -96,30 +100,24 @@ async function setupGame(game: Game, players: DiscordPlayer[]) {
 	});
 
 	// create a new private thread for the mafia players
-	const mafiaThreadTopic = 'Private thread for the Mafia';
 	await createPrivateThread(
 		'Mafia Private Thread',
 		mafiaInteractions,
-		mafiaThreadTopic,
-		game,
+		game.channel as TextChannel,
 	);
 
 	// create a new private thread for the cop
-	const copThreadTopic = 'Private thread for the Cop.';
 	await createPrivateThread(
 		'Cop Private Thread',
 		copInteractions,
-		copThreadTopic,
-		game,
+		game.channel as TextChannel,
 	);
 
 	// create a new private thread for the medic
-	const medicThreadTopic = 'Private thread for the Medic.';
 	await createPrivateThread(
 		'Medic Private Thread',
 		medicInteractions,
-		medicThreadTopic,
-		game,
+		game.channel as TextChannel,
 	);
 
 	setTimeout(() => {
@@ -382,36 +380,33 @@ function startNight() {
 
 async function assignRole(
 	player: DiscordPlayer,
-	role: Role,
+	role: string,
 	index: number,
 	game: Game,
 ) {
-	// TODO: check if this works later
-	const nickname = game.guild.members.cache.get(player.id)!.nickname;
-
 	let newPlayer: Mafia | Cop | Medic | Townie | undefined;
 
-	if (role === Mafia) {
-		newPlayer = new Mafia(nickname!, player.id);
+	if (role === 'mafia') {
+		newPlayer = new Mafia(player.name, player.id);
 		mafia.push(newPlayer);
 		mafiaInteractions.push(player.interaction);
-	} else if (role === Cop) {
-		newPlayer = new Cop(nickname!, player.id);
+	} else if (role === 'cop') {
+		newPlayer = new Cop(player.name, player.id);
 		// cop = newPlayer;
 		copInteractions.push(player.interaction);
-	} else if (role === Medic) {
-		newPlayer = new Medic(nickname!, player.id);
+	} else if (role === 'medic') {
+		newPlayer = new Medic(player.name, player.id);
 		// medic = newPlayer;
 		medicInteractions.push(player.interaction);
 	} else {
-		newPlayer = new Townie(nickname!, player.id);
+		newPlayer = new Townie(player.name, player.id);
 		townies.push(newPlayer);
 	}
 
 	let description = newPlayer.description;
 
 	if (newPlayer instanceof Cop || newPlayer instanceof Medic) {
-		description += newPlayer.roleExplanation;
+		description += `\n${newPlayer.roleExplanation}`;
 	}
 
 	await player.interaction.followUp({
