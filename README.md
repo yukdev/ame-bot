@@ -10,6 +10,6 @@ Run `yarn build` to compile TypeScript to `/dist` folder, then run `yarn start`.
 
 # Commands
 
-`/mafia` - Starts a new game of Mafia.\
+`/mafia` - starts a new game of Mafia.\
 `/nominate <discorduser>` - nominates a player for hanging.\
 `/time` - checks how much time is left in the day.
