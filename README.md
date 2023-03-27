@@ -12,4 +12,4 @@ Run `yarn build` to compile TypeScript to `/dist` folder, then run `yarn start`.
 
 `/mafia` - Starts a new game of Mafia.\
 `/nominate <discorduser>` - nominates a player for hanging.\
-`/time` - checks how much time is left in the day.\
+`/time` - checks how much time is left in the day.
